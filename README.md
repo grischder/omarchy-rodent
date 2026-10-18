@@ -60,6 +60,17 @@ Nothing else is written. Removing the plugin does not change onboard mouse profi
 | Key | Default | Description |
 | --- | --- | --- |
 | `lowBatteryPercent` | 15 | Notify once when discharging reaches this percent (5–40). |
+| `dpiPresets` | 400, 800, 1600, 3200, 6400 | Buttons in the panel's preset row. Up to 8, comma separated, each one a value the sensor takes (100–25600 in steps of 50). Anything else is dropped, and the default row comes back if nothing is left. |
+
+## Development
+
+The panel's pure logic — status parsing, DPI validation, the preset list, the low-battery rule — has tests:
+
+```bash
+node --test tests/
+```
+
+Node's built-in runner, no dependencies and no build step. The QML wiring and the device itself are not covered and stay manual.
 
 ## License
 
