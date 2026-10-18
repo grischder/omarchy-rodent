@@ -8,6 +8,11 @@ var DPI_STEP = 50
 var MAX_DPI_PRESETS = 8
 var DEFAULT_DPI_PRESETS = [400, 800, 1600, 3200, 6400]
 
+// The slider covers the range people actually use; presets and the helper still
+// reach the rest of the sensor (DPI_MIN..DPI_MAX).
+var DPI_SLIDER_MIN = 400
+var DPI_SLIDER_MAX = 6400
+
 function clampText(value, maxLen) {
   var limit = maxLen || MAX_TEXT
   var s = String(value == null ? "" : value)
@@ -129,6 +134,40 @@ function nextDpi(current, delta, list) {
   return presets[idx]
 }
 
+function dpiMin() {
+  return DPI_MIN
+}
+
+function dpiMax() {
+  return DPI_MAX
+}
+
+function dpiStep() {
+  return DPI_STEP
+}
+
+function dpiSliderMin() {
+  return DPI_SLIDER_MIN
+}
+
+function dpiSliderMax() {
+  return DPI_SLIDER_MAX
+}
+
+// The presets are a shortcut, not the whole range: the slider and the helper
+// both take any value the sensor can do.
+function isValidDpi(value) {
+  var n = parseDpi(value)
+  return n >= DPI_MIN && n <= DPI_MAX && n % DPI_STEP === 0
+}
+
+function snapDpi(value) {
+  var n = parseDpi(value)
+  if (n < 0) return n
+  n = Math.round(n / DPI_STEP) * DPI_STEP
+  return Math.max(DPI_MIN, Math.min(DPI_MAX, n))
+}
+
 function batteryBand(percent) {
   var n = parsePercent(percent)
   if (n < 0) return "unknown"
@@ -182,6 +221,13 @@ if (typeof module !== "undefined") {
     parseDpi: parseDpi,
     formatDpi: formatDpi,
     dpiPresets: dpiPresets,
+    dpiMin: dpiMin,
+    dpiMax: dpiMax,
+    dpiStep: dpiStep,
+    dpiSliderMin: dpiSliderMin,
+    dpiSliderMax: dpiSliderMax,
+    isValidDpi: isValidDpi,
+    snapDpi: snapDpi,
     nextDpi: nextDpi,
     batteryBand: batteryBand,
     chargeLabel: chargeLabel,

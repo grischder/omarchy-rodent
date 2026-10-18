@@ -32,6 +32,17 @@ Panel {
   readonly property bool dpiBusy: !!(hostWidget && hostWidget.dpiBusy)
   readonly property color fillColor: (hostWidget && hostWidget.batteryColor) ? hostWidget.batteryColor : (lowBattery ? urgent : foreground)
   property int dpiCursor: -1
+  property int dpiPreview: -1
+
+  // While dragging, the label and the settle-back position come from the
+  // snapped preview; otherwise the slider just follows the mouse's own value,
+  // so preset buttons and the mouse's DPI keys move it too. The track widens to
+  // hold a DPI outside the usual window rather than pinning the knob to an end.
+  readonly property int sliderMin: Math.min(Model.dpiSliderMin(), root.dpi > 0 ? root.dpi : Model.dpiSliderMin())
+  readonly property int sliderMax: Math.max(Model.dpiSliderMax(), root.dpi > 0 ? root.dpi : Model.dpiSliderMax())
+  readonly property int sliderValue: dpiPreview > 0
+    ? dpiPreview
+    : Math.max(root.sliderMin, Math.min(root.sliderMax, root.dpi > 0 ? root.dpi : root.sliderMin))
 
   readonly property string heroStatusText: modeLabel || "Standing by"
 
@@ -210,6 +221,31 @@ Panel {
             text: "SENSITIVITY"
             foreground: root.foreground
             fontFamily: root.fontFamily
+          }
+
+          InfoPair {
+            label: "Fine tune"
+            value: Model.formatDpi(root.dpiPreview > 0 ? root.dpiPreview : root.dpi)
+          }
+
+          PanelSlider {
+            bar: root.bar
+            width: parent.width
+            minimum: root.sliderMin
+            maximum: root.sliderMax
+            integer: true
+            step: 100
+            enabled: !root.dpiBusy
+            value: root.sliderValue
+
+            // Follow the drag, but only write once it is let go: every move
+            // would otherwise be a HID++ round trip.
+            onMoved: function(v) { root.dpiPreview = Model.snapDpi(v) }
+            onReleased: function(v) {
+              root.dpiPreview = Model.snapDpi(v)
+              root.setDpi(root.dpiPreview)
+              root.dpiPreview = -1
+            }
           }
 
           Row {

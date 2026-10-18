@@ -144,12 +144,7 @@ BarWidget {
 
   function setDpi(value) {
     var next = Model.parseDpi(value)
-    var allowed = root.dpiPresets
-    var ok = false
-    for (var i = 0; i < allowed.length; i++) {
-      if (allowed[i] === next) ok = true
-    }
-    if (!ok || dpiSetProc.running) return
+    if (!Model.isValidDpi(next) || dpiSetProc.running) return
     var merged = {}
     for (var key in status) merged[key] = status[key]
     merged.dpi = next
