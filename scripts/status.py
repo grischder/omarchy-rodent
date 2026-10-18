@@ -116,9 +116,10 @@ def _model_label(raw: str) -> str:
     for known in KNOWN_MODELS:
         if name.casefold() == known.casefold():
             return known
-    # An unrecognized spelling is not a reason to call the mouse a plain G502 X
-    # (a PLUS would be mislabeled as the base model). _plain has already bounded
-    # it to printable ASCII and MAX_TEXT, so report what the device says.
+    # Not one of the spellings above: report the name the device gave rather
+    # than assuming the base model, since a PLUS labelled "G502 X" would be
+    # wrong on the bar, in the panel and in the notification. _plain has already
+    # bounded it to printable ASCII and MAX_TEXT, so it is safe to display.
     return name or "G502 X"
 
 

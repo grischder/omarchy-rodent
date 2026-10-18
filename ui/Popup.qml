@@ -224,7 +224,7 @@ Panel {
           }
 
           InfoPair {
-            label: "Fine tune"
+            label: "Adjust"
             value: Model.formatDpi(root.dpiPreview > 0 ? root.dpiPreview : root.dpi)
           }
 
