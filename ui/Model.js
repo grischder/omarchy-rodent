@@ -67,11 +67,13 @@ function parseStatus(raw) {
   }
 }
 
+// -1 means "no reading" and every caller checks for it, so the helper's own
+// -1 (and any negative value) must not come back as a healthy-looking 0%.
 function parsePercent(value) {
   if (value === null || value === undefined || value === "") return -1
   var n = Number(value)
-  if (!isFinite(n)) return -1
-  return Math.max(0, Math.min(100, Math.round(n)))
+  if (!isFinite(n) || n < 0) return -1
+  return Math.min(100, Math.round(n))
 }
 
 function parseDpi(value) {

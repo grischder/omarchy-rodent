@@ -162,13 +162,14 @@ BarWidget {
   }
 
   function sendLowBatteryWarning(level) {
+    var name = root.deviceTitle
     Quickshell.execDetached([
       "omarchy-notification-send",
       "-g", root.mouseIcon,
       "-u", "critical",
-      "--app-name", "G502 X",
+      "--app-name", name,
       "Time to recharge!",
-      "G502 X is down to " + String(level) + "%",
+      name + " is down to " + String(level) + "%",
       "-t", "30000"
     ])
   }
