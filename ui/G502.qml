@@ -27,7 +27,7 @@ BarWidget {
   readonly property bool lowBattery: mousePresent && discharging && batteryPercent >= 0 && batteryPercent <= lowBatteryPercent
   readonly property string mouseIcon: Model.mouseIcon()
   readonly property int dpi: Model.parseDpi(status.dpi)
-  readonly property var dpiPresets: Model.dpiPresets(setting("dpiPresets", ""))
+  readonly property var dpiPresets: Model.dpiPresets()
   readonly property color batteryColor: {
     var band = Model.batteryBand(batteryPercent)
     if (band === "red") return bar ? bar.urgent : Color.urgent
@@ -155,7 +155,7 @@ BarWidget {
   }
 
   function nudgeDpi(delta) {
-    root.setDpi(Model.nextDpi(root.dpi, delta, root.dpiPresets))
+    root.setDpi(Model.nextDpi(root.dpi, delta))
   }
 
   function checkLowBattery() {

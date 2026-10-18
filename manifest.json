@@ -18,8 +18,7 @@
     "defaultSection": "right",
     "defaults": {
       "showPercentage": true,
-      "lowBatteryPercent": 15,
-      "dpiPresets": "400, 800, 1600, 3200, 6400"
+      "lowBatteryPercent": 15
     },
     "schema": [
       {
@@ -38,13 +37,6 @@
         "step": 1,
         "defaultValue": 15,
         "description": "Percent. A notification is sent once when the mouse falls to this while discharging."
-      },
-      {
-        "key": "dpiPresets",
-        "type": "string",
-        "label": "Sensitivity presets",
-        "defaultValue": "400, 800, 1600, 3200, 6400",
-        "description": "Comma-separated DPI values for the preset buttons, e.g. 800, 1200, 1600. Values the sensor cannot take (100-25600 in steps of 50) are ignored, as are duplicates. Up to 8, shown lowest first."
       }
     ]
   }

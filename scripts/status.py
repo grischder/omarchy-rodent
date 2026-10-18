@@ -30,10 +30,9 @@ MAX_STDERR_BYTES = 4096
 # silently costs the DPI reading.
 MAX_HID_REPLY = 256
 MAX_BATTERY_NODES = 8
-# What the HID++ ADJUSTABLE_DPI feature takes. The preset list itself is a
-# widget setting, so the helper checks the range the sensor supports instead of
-# a copy of the shipped presets - a copy silently drops writes the moment the
-# two drift apart.
+# What the HID++ ADJUSTABLE_DPI feature takes. Checking the range instead of a
+# copy of the shipped presets keeps the helper and the panel from drifting
+# apart - a stale copy silently drops writes.
 DPI_MIN = 100
 DPI_MAX = 25600
 DPI_STEP = 50

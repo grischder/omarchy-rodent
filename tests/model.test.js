@@ -120,30 +120,6 @@ test("formatDpi shows an em dash rather than a made up number", function () {
   assert.equal(Model.formatDpi(null), "—")
 })
 
-test("dpiPresets parses the setting, sorts and dedupes", function () {
-  assert.deepEqual(Model.dpiPresets("3200, 800, 1600"), [800, 1600, 3200])
-  assert.deepEqual(Model.dpiPresets("800, 800"), [800])
-  assert.deepEqual(Model.dpiPresets("800, 1200, 1600, 2400, 3200"), [800, 1200, 1600, 2400, 3200])
-})
-
-test("dpiPresets drops what the sensor cannot take, keeping the rest", function () {
-  assert.deepEqual(Model.dpiPresets("40, 800, 1000"), [800, 1000]) // below the sensor
-  assert.deepEqual(Model.dpiPresets("800, 1024"), [800]) // not a sensor step
-  assert.deepEqual(Model.dpiPresets("800, 25700"), [800]) // above the sensor
-})
-
-test("dpiPresets tolerates punctuation and stray text", function () {
-  assert.deepEqual(Model.dpiPresets("800dpi, 1600 DPI"), [800, 1600])
-  assert.deepEqual(Model.dpiPresets("800;1600"), [800, 1600])
-})
-
-test("dpiPresets caps the row and falls back to the shipped defaults", function () {
-  assert.deepEqual(Model.dpiPresets("100,200,300,400,500,600,700,800,900"), [100, 200, 300, 400, 500, 600, 700, 800])
-  assert.deepEqual(Model.dpiPresets(""), [400, 800, 1600, 3200, 6400])
-  assert.deepEqual(Model.dpiPresets(null), [400, 800, 1600, 3200, 6400])
-  assert.deepEqual(Model.dpiPresets("banana"), [400, 800, 1600, 3200, 6400])
-})
-
 test("isValidDpi follows the sensor range and its 50 dpi step", function () {
   assert.equal(Model.isValidDpi(100), true)
   assert.equal(Model.isValidDpi(1300), true)
@@ -173,23 +149,22 @@ test("the slider window sits inside the sensor range", function () {
   assert.equal(Model.isValidDpi(Model.dpiSliderMax() + Model.dpiStep()), true)
 })
 
-test("nextDpi walks the preset list and stops at both ends", function () {
-  var list = [800, 1600, 3200]
-  assert.equal(Model.nextDpi(800, 1, list), 1600)
-  assert.equal(Model.nextDpi(1600, -1, list), 800)
-  assert.equal(Model.nextDpi(800, -1, list), 800)
-  assert.equal(Model.nextDpi(3200, 1, list), 3200)
+test("nextDpi walks the preset row and stops at both ends", function () {
+  assert.equal(Model.nextDpi(800, 1), 1600)
+  assert.equal(Model.nextDpi(1600, -1), 800)
+  assert.equal(Model.nextDpi(400, -1), 400)
+  assert.equal(Model.nextDpi(6400, 1), 6400)
 })
 
 test("nextDpi steps on from the closest preset when the value is not one", function () {
   // The mouse can sit on any 50 dpi step, from the slider or its own buttons.
-  assert.equal(Model.nextDpi(1300, -1, [800, 1600, 3200]), 800)
-  assert.equal(Model.nextDpi(1300, 1, [800, 1600, 3200]), 3200)
+  assert.equal(Model.nextDpi(1300, -1), 800)
+  assert.equal(Model.nextDpi(1300, 1), 3200)
 })
 
 test("nextDpi returns the current value when there is no direction", function () {
-  assert.equal(Model.nextDpi(1300, 0, [800, 1600]), 1300)
-  assert.equal(Model.nextDpi(1300, null, [800, 1600]), 1300)
+  assert.equal(Model.nextDpi(1300, 0), 1300)
+  assert.equal(Model.nextDpi(1300, null), 1300)
 })
 
 test("batteryBand colours the icon and leaves it neutral when it has no reading", function () {

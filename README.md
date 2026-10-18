@@ -22,7 +22,7 @@ This plugin is new code. It is not a fork. It does stand on other people’s wor
 
 - **Bar** — mouse glyph only, colored by charge: green at 50%+, yellow under 50%, red under 25%. Hover for the model, charge, state and DPI
 - **Panel** — percent, charging or discharging, LIGHTSPEED, current DPI
-- **Sensitivity** — a slider over the usual 400–6400 range (steps of 50, and it widens if your mouse sits outside that) plus preset buttons you choose yourself, 400 / 800 / 1600 / 3200 / 6400 out of the box, same control style as power profiles
+- **Sensitivity** — a slider over the usual 400–6400 range (steps of 50, and it widens if your mouse sits outside that) plus the preset row 400 / 800 / 1600 / 3200 / 6400, same control style as power profiles
 - **Low battery** — one critical notification when discharging hits the threshold (default 15%)
 
 ## Requirements
@@ -60,11 +60,10 @@ Nothing else is written. Removing the plugin does not change onboard mouse profi
 | Key | Default | Description |
 | --- | --- | --- |
 | `lowBatteryPercent` | 15 | Notify once when discharging reaches this percent (5–40). |
-| `dpiPresets` | 400, 800, 1600, 3200, 6400 | Buttons in the panel's preset row. Up to 8, comma separated, each one a value the sensor takes (100–25600 in steps of 50). Anything else is dropped, and the default row comes back if nothing is left. |
 
 ## Development
 
-The panel's pure logic — status parsing, DPI validation, the preset list, the low-battery rule — has tests:
+The panel's pure logic — status parsing, DPI validation, the low-battery rule — has tests:
 
 ```bash
 node --test tests/
