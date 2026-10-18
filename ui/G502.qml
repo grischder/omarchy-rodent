@@ -36,6 +36,14 @@ BarWidget {
     return bar ? bar.barForeground : Color.foreground
   }
   readonly property string modeLabel: Model.modeLabel(mousePresent, fullyCharged, charging, discharging)
+  readonly property string tooltipText: {
+    if (!mousePresent) return "G502 X — not connected"
+    var bits = [deviceTitle]
+    if (batteryPercent >= 0) bits.push(String(batteryPercent) + "%")
+    if (modeLabel) bits.push(modeLabel)
+    if (dpi > 0) bits.push(Model.formatDpi(dpi))
+    return bits.join(" · ")
+  }
   readonly property int jobDeadlineMs: 2500
   readonly property int killEscalateMs: 400
   readonly property int maxStatusChars: 2048
@@ -296,7 +304,7 @@ BarWidget {
     foreground: root.batteryColor
     text: root.mouseIcon
     slotSize: Style.bar.iconSlot
-    tooltipText: ""
+    tooltipText: root.tooltipText
     onPressed: function(b) {
       if (!root.mousePresent) return
       root.togglePanel()
