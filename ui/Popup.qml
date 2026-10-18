@@ -35,9 +35,11 @@ Panel {
   property int dpiPreview: -1
 
   // While dragging, the label and the settle-back position come from the
-  // snapped preview; otherwise the slider just follows the mouse's own value,
-  // so preset buttons and the mouse's DPI keys move it too. The track widens to
-  // hold a DPI outside the usual window rather than pinning the knob to an end.
+  // snapped preview. Between drags the knob follows the widget's DPI reading -
+  // the value a write asked for, then whatever the helper reports back when it
+  // exits - so preset buttons and the mouse's own DPI keys move it too. A write
+  // that does not take snaps the knob back silently. The track widens to hold a
+  // DPI outside the usual window rather than pinning the knob to an end.
   readonly property int sliderMin: Math.min(Model.dpiSliderMin(), root.dpi > 0 ? root.dpi : Model.dpiSliderMin())
   readonly property int sliderMax: Math.max(Model.dpiSliderMax(), root.dpi > 0 ? root.dpi : Model.dpiSliderMax())
   readonly property int sliderValue: dpiPreview > 0
