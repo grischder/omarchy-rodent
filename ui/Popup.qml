@@ -234,7 +234,7 @@ Panel {
             minimum: root.sliderMin
             maximum: root.sliderMax
             integer: true
-            step: 100
+            step: Model.dpiStep
             enabled: !root.dpiBusy
             value: root.sliderValue
 
