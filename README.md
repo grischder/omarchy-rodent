@@ -2,7 +2,7 @@
 
 A bar widget for the Logitech G502 X family (LIGHTSPEED and PLUS). The mouse on the bar turns **green, yellow, or red** with the charge. Click it for percent, charging state, LIGHTSPEED, and DPI presets.
 
-![G502 X panel: charge, LIGHTSPEED, and DPI presets](preview.png)
+![G502 X panel: charge, LIGHTSPEED, the DPI slider and presets](preview.png)
 
 ## Store blurb
 
