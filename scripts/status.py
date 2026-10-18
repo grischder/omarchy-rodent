@@ -24,7 +24,11 @@ MAX_SYSFS_BYTES = 256
 MAX_TEXT = 48
 MAX_JSON_BYTES = 2048
 MAX_STDERR_BYTES = 4096
-MAX_HID_REPLY = 96
+# The HID++ reply JSON is ~100 bytes at its widest (dpi, percent, a status
+# label and three flags). Cutting it short at this bound leaves invalid JSON,
+# and an unparsable reply is dropped exactly like a missing mouse, which
+# silently costs the DPI reading.
+MAX_HID_REPLY = 256
 MAX_BATTERY_NODES = 8
 KNOWN_MODELS = (
     "G502 X LIGHTSPEED",
