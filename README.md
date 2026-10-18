@@ -1,6 +1,6 @@
 # G502 X for Omarchy
 
-A bar widget for the Logitech G502 X LIGHTSPEED. The mouse on the bar turns **green, yellow, or red** with the charge. Click it for percent, charging state, LIGHTSPEED, and DPI presets.
+A bar widget for the Logitech G502 X family (LIGHTSPEED and PLUS). The mouse on the bar turns **green, yellow, or red** with the charge. Click it for percent, charging state, LIGHTSPEED, and DPI presets.
 
 ![G502 X panel: charge, LIGHTSPEED, and DPI presets](preview.png)
 
@@ -28,7 +28,7 @@ This plugin is new code. It is not a fork. It does stand on other people’s wor
 ## Requirements
 
 - Omarchy (omarchy-shell)
-- A Logitech G502 X LIGHTSPEED on the LIGHTSPEED receiver (wireless PID `409F`)
+- A Logitech G502 X LIGHTSPEED (wireless PID `409F`) or G502 X PLUS (wireless PID `4099`) on the LIGHTSPEED receiver
 - Charge comes from the kernel HID++ battery. **No sudo or pkexec is required.**
 - DPI read/write uses the `logitech_receiver` Python module from Solaar. Install Solaar with Omarchy’s package helper if you want DPI. If that library is missing, charge still works and DPI shows as —.
 

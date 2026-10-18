@@ -13,10 +13,11 @@ from pathlib import Path
 
 SYSFS_ROOT = Path("/sys/class/power_supply")
 
-# G502 X LIGHTSPEED on the LIGHTSPEED dongle only.
+# G502 X family on the LIGHTSPEED dongle only.
 TRUSTED_VID = "046D"
 TRUSTED_RECEIVER_PID = "C547"
-TRUSTED_WPID = "409F"
+# 409F: G502 X LIGHTSPEED, 4099: G502 X PLUS
+TRUSTED_WPIDS = ("409F", "4099")
 
 JOB_DEADLINE_SEC = 2.0
 MAX_SYSFS_BYTES = 256
@@ -28,6 +29,8 @@ MAX_BATTERY_NODES = 8
 KNOWN_MODELS = (
     "G502 X LIGHTSPEED",
     "Logitech G502 X LIGHTSPEED",
+    "G502 X PLUS",
+    "Logitech G502 X PLUS",
     "Logitech G502 X LS",
     "G502 X LS",
     "G502 X",
@@ -85,7 +88,7 @@ def _trusted_battery(entry: Path) -> bool:
     except OSError:
         return False
     vid, pid = _hid_vid_pid(_read(hid / "uevent"))
-    if vid != TRUSTED_VID or pid != TRUSTED_WPID:
+    if vid != TRUSTED_VID or pid not in TRUSTED_WPIDS:
         return False
     parent = hid.parent
     if parent is None:
@@ -157,7 +160,7 @@ def _trusted_receiver(info) -> bool:
 
 
 def _trusted_device(dev) -> bool:
-    if _id(getattr(dev, "wpid", None)) != TRUSTED_WPID:
+    if _id(getattr(dev, "wpid", None)) not in TRUSTED_WPIDS:
         return False
     rec = getattr(dev, "receiver", None)
     rec_pid = _id(getattr(rec, "product_id", None) if rec is not None else None)
