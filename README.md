@@ -22,7 +22,7 @@ This plugin is new code. It is not a fork. It does stand on other people’s wor
 
 - **Bar** — mouse glyph only, colored by charge: green at 50%+, yellow under 50%, red under 25%
 - **Panel** — percent, charging or discharging, LIGHTSPEED, current DPI
-- **Sensitivity** — 400 / 800 / 1600 / 3200 / 6400, same control style as power profiles
+- **Sensitivity** — presets you choose yourself, 400 / 800 / 1600 / 3200 / 6400 out of the box, same control style as power profiles
 - **Low battery** — one critical notification when discharging hits the threshold (default 15%)
 
 ## Requirements

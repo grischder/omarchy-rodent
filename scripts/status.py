@@ -30,6 +30,13 @@ MAX_STDERR_BYTES = 4096
 # silently costs the DPI reading.
 MAX_HID_REPLY = 256
 MAX_BATTERY_NODES = 8
+# What the HID++ ADJUSTABLE_DPI feature takes. The preset list itself is a
+# widget setting, so the helper checks the range the sensor supports instead of
+# a copy of the shipped presets - a copy silently drops writes the moment the
+# two drift apart.
+DPI_MIN = 100
+DPI_MAX = 25600
+DPI_STEP = 50
 KNOWN_MODELS = (
     "G502 X LIGHTSPEED",
     "Logitech G502 X LIGHTSPEED",
@@ -457,7 +464,7 @@ def _parse_set_dpi(argv: list[str]) -> int | None:
         value = int(argv[2])
     except ValueError:
         return None
-    if value not in (400, 800, 1600, 3200, 6400):
+    if value < DPI_MIN or value > DPI_MAX or value % DPI_STEP:
         return None
     return value
 
