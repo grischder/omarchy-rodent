@@ -94,8 +94,9 @@ Nothing else is written. Removing the plugin does not change onboard mouse profi
 ## Development
 
 ```bash
-node --test tests/        # pure logic in ui/Model.js
-python3 scripts/status.py # one JSON line for the attached mouse
+node --test tests/                     # pure logic in ui/Model.js
+python3 -m unittest discover -s tests  # helper logic in scripts/status.py
+python3 scripts/status.py              # one JSON line for the attached mouse
 ```
 
 ## Disclaimer

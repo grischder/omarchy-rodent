@@ -340,7 +340,10 @@ def _snap_dpi(value: int, low: int | None, high: int | None, step: int | None) -
     if low is not None and high is not None:
         value = max(low, min(high, value))
     if low is not None and step:
-        value = low + round((value - low) / step) * step
+        # Half up, matching Math.round in the panel. Python's round() is half to
+        # even, which would send 500 to 400 on a 200 dpi mouse while the panel
+        # showed 600.
+        value = low + math.floor((value - low) / step + 0.5) * step
         if high is not None:
             value = min(high, value)
     return int(value)
@@ -612,8 +615,30 @@ def _on_term(_signum, _frame) -> None:
     os._exit(0)
 
 
+def _comparable_model(name: str) -> str:
+    text = _plain(name).casefold()
+    for prefix in ("wireless mouse ", "logitech "):
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+    return text.strip()
+
+
+def _same_model(left: str, right: str) -> bool:
+    """Whether a sysfs node and a Solaar device describe the same hardware."""
+    a = _comparable_model(left)
+    b = _comparable_model(right)
+    return not a or not b or a == b
+
+
 def _merge(payload: dict, hid: dict) -> dict:
-    """Solaar's reading wins; sysfs still fills whatever it did not report."""
+    """Solaar's reading wins; sysfs still fills whatever it did not report.
+
+    A receiver can carry a keyboard next to the mouse, and sysfs does not say
+    which is which. When the two sides name different devices, the sysfs node
+    is not the mouse, so its charge must not be lent to it.
+    """
+    if payload.get("present") and not _same_model(payload.get("model", ""), hid.get("model", "")):
+        payload = _empty_battery()
     payload["present"] = True
     for key in ("model", "connection", "percent", "status", "charging", "full", "discharging"):
         value = hid.get(key)
