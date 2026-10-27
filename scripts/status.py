@@ -118,7 +118,7 @@ def _logitech_battery(entry: Path) -> str | None:
         hid = device.resolve()
     except OSError:
         return None
-    vid, _pid = _hid_vid_pid(_read(hid / "uevent"))
+    vid, wpid = _hid_vid_pid(_read(hid / "uevent"))
     if vid != LOGITECH_VID:
         return None
     parent = hid.parent
@@ -131,6 +131,14 @@ def _logitech_battery(entry: Path) -> str | None:
     if kind and kind not in SUPPORTED_RECEIVERS:
         return None
     return kind
+
+
+def _sysfs_wpid(entry: Path) -> str:
+    try:
+        hid = (entry / "device").resolve()
+    except OSError:
+        return ""
+    return _hid_vid_pid(_read(hid / "uevent"))[1]
 
 
 def _status_label(raw: str) -> str:
@@ -200,6 +208,7 @@ def _battery() -> dict:
                 "full": full,
                 "discharging": discharging,
                 "connection": _connection(kind),
+                "wpid": _sysfs_wpid(entry),
             }
         )
         return payload
@@ -287,14 +296,20 @@ def _battery_state(code: int | None, percent: int | None) -> dict:
     }
 
 
-def _read_battery(dev) -> dict:
-    """Battery through Solaar, which covers every battery feature mice ship."""
+def _read_battery(dev) -> dict | None:
+    """Battery through Solaar, which covers every battery feature mice ship.
+
+    None means "no report", which is not the same as a report of zero. The
+    caller must leave the sysfs reading in place rather than overwrite it with
+    defaults: a sleeping mouse would otherwise lose its discharging state and
+    with it the low-battery warning.
+    """
     try:
         report = dev.battery()
     except Exception:
-        return {}
+        return None
     if report is None:
-        return {}
+        return None
     level = getattr(report, "level", None)
     try:
         percent = int(level) if level is not None else None
@@ -467,7 +482,15 @@ def _hid_work(set_to: int | None, set_rate_to: int | None) -> dict:
             out["present"] = True
             out["model"] = _device_name(dev)
             out["connection"] = _connection(kind)
-            out.update(_read_battery(dev))
+            out["wpid"] = _id(getattr(dev, "wpid", ""))
+            state = _read_battery(dev)
+            if state is None:
+                # Leave the group unset; _merge must not let "no report" erase
+                # the sysfs flags it is meant to complement.
+                for key in ("percent", "status", "charging", "full", "discharging"):
+                    out[key] = None
+            else:
+                out.update(state)
             low, high, step, allowed = _dpi_shape(_dpi_list(dev))
             out["dpi_min"] = low
             out["dpi_max"] = high
@@ -724,11 +747,21 @@ def _comparable_model(name: str) -> str:
     return text.strip()
 
 
-def _same_model(left: str, right: str) -> bool:
-    """Whether a sysfs node and a Solaar device describe the same hardware."""
-    a = _comparable_model(left)
-    b = _comparable_model(right)
-    return not a or not b or a == b
+def _same_device(sysfs: dict, hid: dict) -> bool:
+    """Whether a sysfs node and a Solaar device describe the same hardware.
+
+    The wireless product id is the strong signal: every receiver device has
+    one. Names are the fallback, and a blank name on either side is not
+    evidence of anything - a keyboard with no model_name must not be mistaken
+    for the mouse Solaar just selected.
+    """
+    a_wpid = _id(sysfs.get("wpid"))
+    b_wpid = _id(hid.get("wpid"))
+    if a_wpid and b_wpid:
+        return a_wpid == b_wpid
+    a = _comparable_model(sysfs.get("model", ""))
+    b = _comparable_model(hid.get("model", ""))
+    return bool(a) and bool(b) and a == b
 
 
 def _merge(payload: dict, hid: dict) -> dict:
@@ -738,7 +771,7 @@ def _merge(payload: dict, hid: dict) -> dict:
     which is which. When the two sides name different devices, the sysfs node
     is not the mouse, so its charge must not be lent to it.
     """
-    if payload.get("present") and not _same_model(payload.get("model", ""), hid.get("model", "")):
+    if payload.get("present") and not _same_device(payload, hid):
         payload = _empty_battery()
     payload["present"] = True
     for key in ("model", "connection", "percent", "status", "charging", "full", "discharging"):

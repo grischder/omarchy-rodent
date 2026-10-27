@@ -77,18 +77,56 @@ class BatteryStateTest(unittest.TestCase):
         self.assertTrue(state["full"])
 
 
-class ModelMatchTest(unittest.TestCase):
-    def test_ignores_the_prefixes_the_two_sources_disagree_on(self):
-        self.assertTrue(status._same_model("Wireless Mouse MX Master", "MX Master"))
-        self.assertTrue(status._same_model("Logitech G502 X PLUS", "G502 X PLUS"))
+class DeviceMatchTest(unittest.TestCase):
+    def test_the_wireless_pid_is_the_strong_signal(self):
+        self.assertTrue(status._same_device({"wpid": "409F", "model": "G502 X"}, {"wpid": "409f", "model": "G502 X PLUS"}))
+        self.assertFalse(status._same_device({"wpid": "4041", "model": "MX Master"}, {"wpid": "409F", "model": "MX Master"}))
 
-    def test_missing_names_are_not_a_mismatch(self):
-        self.assertTrue(status._same_model("", "G502 X PLUS"))
-        self.assertTrue(status._same_model("G502 X PLUS", ""))
+    def test_names_are_the_fallback_when_no_pid_is_known(self):
+        self.assertTrue(status._same_device({"model": "Wireless Mouse MX Master"}, {"model": "MX Master"}))
+        self.assertFalse(status._same_device({"model": "MX Keys"}, {"model": "MX Master"}))
 
-    def test_different_devices_do_not_match(self):
-        self.assertFalse(status._same_model("MX Keys", "MX Master"))
-        self.assertFalse(status._same_model("G502 X", "G915"))
+    def test_a_blank_name_is_not_evidence_of_a_match(self):
+        self.assertFalse(status._same_device({"model": ""}, {"model": "G502 X PLUS"}))
+        self.assertFalse(status._same_device({"model": "G502 X PLUS"}, {"model": ""}))
+        self.assertFalse(status._same_device({}, {}))
+
+
+class MergeTest(unittest.TestCase):
+    def _sysfs(self, **fields):
+        payload = status._empty_battery()
+        payload.update({"present": True, "model": "G502 X", "wpid": "409F"})
+        payload.update(fields)
+        return payload
+
+    def _hid(self, **fields):
+        payload = status._empty_battery()
+        payload.update({"present": True, "model": "G502 X", "wpid": "409F"})
+        payload.update(fields)
+        return payload
+
+    def test_an_unread_battery_does_not_erase_the_sysfs_state(self):
+        # Solaar saw the mouse but could not read its battery: a sleeping mouse.
+        sysfs = self._sysfs(percent=12, status="Discharging", discharging=True)
+        hid = self._hid(percent=None, status=None, charging=None, full=None, discharging=None)
+        merged = status._merge(sysfs, hid)
+        self.assertEqual(merged["percent"], 12)
+        self.assertEqual(merged["status"], "Discharging")
+        self.assertTrue(merged["discharging"])
+
+    def test_a_different_wireless_pid_drops_the_sysfs_reading(self):
+        sysfs = self._sysfs(percent=90, status="Discharging", discharging=True)
+        hid = self._hid(wpid="4099", model="G502 X PLUS")
+        merged = status._merge(sysfs, hid)
+        self.assertIsNone(merged["percent"])
+        self.assertEqual(merged["model"], "G502 X PLUS")
+
+    def test_no_battery_report_is_none_not_zero(self):
+        class Dead:
+            def battery(self):
+                return None
+
+        self.assertIsNone(status._read_battery(Dead()))
 
 
 class RateTest(unittest.TestCase):

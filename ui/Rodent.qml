@@ -36,7 +36,9 @@ BarWidget {
   // these, so the slider walks them by index instead of inventing steps.
   readonly property var dpiValues: status.dpiValues || []
   readonly property bool dpiIndexed: dpiValues.length > 1
-  readonly property bool dpiSupported: dpiIndexed || Model.parseDpi(status.dpiMax) > 0 || dpi > 0
+  // A reading alone is not a capability: without a window or list, a write
+  // could only guess, so the controls stay away until one arrives.
+  readonly property bool dpiSupported: dpiIndexed || Model.parseDpi(status.dpiMax) > 0
   readonly property var dpiPresets: Model.dpiPresets(dpiMin, dpiMax, dpiStep, dpiValues)
   readonly property int rate: Model.parseDpi(status.rate)
   readonly property var rates: status.rates || []
@@ -60,7 +62,7 @@ BarWidget {
   }
   readonly property int jobDeadlineMs: 2500
   readonly property int killEscalateMs: 400
-  readonly property int maxStatusChars: 2048
+  readonly property int maxStatusChars: Model.maxStatusChars()
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
@@ -157,6 +159,7 @@ BarWidget {
   }
 
   function setDpi(value) {
+    if (!root.dpiSupported) return
     var next = Model.parseDpi(value)
     if (!Model.isValidDpi(next, root.dpiMin, root.dpiMax, root.dpiStep, root.dpiValues)) return
     if (dpiSetProc.running) return

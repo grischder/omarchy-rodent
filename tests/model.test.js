@@ -133,7 +133,12 @@ test("parseStatus ignores junk instead of throwing", function () {
 
 test("parseStatus refuses an oversized payload", function () {
   // A stuck helper cannot flood the UI with a payload it would then re-render.
-  assert.deepEqual(Model.parseStatus("{" + "x".repeat(3000) + "}"), {})
+  // The payload is valid JSON and over the cap, so only the size check can
+  // reject it.
+  var big = '{"model":"' + "a".repeat(Model.maxStatusChars()) + '"}'
+  assert.deepEqual(Model.parseStatus(big), {})
+  var small = '{"model":"' + "a".repeat(40) + '"}'
+  assert.equal(Model.parseStatus(small).model, "a".repeat(40))
 })
 
 test("parsePercent returns -1 for unknown and clamps to 0..100", function () {

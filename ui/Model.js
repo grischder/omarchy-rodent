@@ -11,6 +11,10 @@ var DPI_STEP = 50
 // the mouse can actually be set to it.
 var DPI_PRESETS = [400, 800, 1600, 3200, 6400]
 
+function maxStatusChars() {
+  return MAX_STATUS_CHARS
+}
+
 function clampText(value, maxLen) {
   var limit = maxLen || MAX_TEXT
   var s = String(value == null ? "" : value)
@@ -298,6 +302,7 @@ function shouldWarnLowBattery(percent, discharging, threshold, alreadyNotified) 
 if (typeof module !== "undefined") {
   module.exports = {
     clampText: clampText,
+    maxStatusChars: maxStatusChars,
     shortName: shortName,
     mouseIcon: mouseIcon,
     allowStatus: allowStatus,
