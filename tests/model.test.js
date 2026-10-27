@@ -23,12 +23,19 @@ test("shortName drops the vendor prefix and the wireless suffixes", function () 
   assert.equal(Model.shortName("Logitech G502 X PLUS"), "G502 X PLUS")
   assert.equal(Model.shortName("Logitech G502 X LIGHTSPEED"), "G502 X")
   assert.equal(Model.shortName("G502 X LS"), "G502 X")
+  assert.equal(Model.shortName("Logitech G Pro X SUPERLIGHT"), "G Pro X")
   assert.equal(Model.shortName("  Logitech   G502   X  "), "G502 X")
 })
 
+test("shortName drops the category prefix some receivers report", function () {
+  assert.equal(Model.shortName("Wireless Mouse MX Master"), "MX Master")
+  assert.equal(Model.shortName("Wireless Mouse MX Master 3S"), "MX Master 3S")
+})
+
 test("shortName falls back to the generic model when it has nothing to show", function () {
-  assert.equal(Model.shortName(""), "G502 X")
-  assert.equal(Model.shortName(null), "G502 X")
+  assert.equal(Model.shortName(""), "Mouse")
+  assert.equal(Model.shortName(null), "Mouse")
+  assert.equal(Model.shortName("Logitech"), "Logitech")
 })
 
 test("allowStatus accepts the helper's states and refuses anything else", function () {
@@ -53,7 +60,8 @@ test("isOn matches what the helper sends", function () {
 test("parseStatus reads a full payload", function () {
   var status = Model.parseStatus(
     '{"present":true,"model":"Logitech G502 X PLUS","percent":75,' +
-    '"status":"Discharging","charging":false,"full":false,"discharging":true,"dpi":1300}'
+    '"status":"Discharging","charging":false,"full":false,"discharging":true,' +
+    '"connection":"LIGHTSPEED","dpi":1300,"dpi_min":100,"dpi_max":25600,"dpi_step":50}'
   )
   assert.deepEqual(status, {
     present: true,
@@ -63,8 +71,21 @@ test("parseStatus reads a full payload", function () {
     charging: false,
     full: false,
     discharging: true,
-    dpi: 1300
+    connection: "LIGHTSPEED",
+    dpi: 1300,
+    dpiMin: 100,
+    dpiMax: 25600,
+    dpiStep: 50
   })
+})
+
+test("parseStatus marks an unreported DPI window instead of inventing one", function () {
+  // -1 is what the panel treats as "no sensitivity control", which is the right
+  // answer when Solaar is missing.
+  var status = Model.parseStatus('{"present":true,"dpi":null,"dpi_min":null,"dpi_max":null,"dpi_step":null}')
+  assert.equal(status.dpiMin, -1)
+  assert.equal(status.dpiMax, -1)
+  assert.equal(status.dpiStep, -1)
 })
 
 test("parseStatus turns missing values into the neutral ones", function () {
@@ -139,14 +160,32 @@ test("snapDpi rounds to the sensor step and clamps at both ends", function () {
   assert.equal(Model.snapDpi(null), -1)
 })
 
-test("the slider window sits inside the sensor range", function () {
-  assert.equal(Model.dpiSliderMin(), 400)
-  assert.equal(Model.dpiSliderMax(), 6400)
-  assert.ok(Model.dpiSliderMin() > Model.dpiMin())
-  assert.ok(Model.dpiSliderMax() < Model.dpiMax())
-  // The presets still reach past the window on both sides.
-  assert.equal(Model.isValidDpi(Model.dpiSliderMin() - Model.dpiStep()), true)
-  assert.equal(Model.isValidDpi(Model.dpiSliderMax() + Model.dpiStep()), true)
+test("the DPI window is the mouse's own, with the generic one as a fallback", function () {
+  assert.deepEqual(Model.dpiWindow(400, 1600, 200), { min: 400, max: 1600, step: 200 })
+  assert.deepEqual(Model.dpiWindow(null, null, null), { min: 100, max: 25600, step: 50 })
+  // A window that is not a window is ignored rather than trusted.
+  assert.deepEqual(Model.dpiWindow(1600, 400, 200), { min: 100, max: 25600, step: 50 })
+  assert.equal(Model.dpiMin(400), 400)
+  assert.equal(Model.dpiMax(1600), 1600)
+  assert.equal(Model.dpiStep(200), 200)
+})
+
+test("validity follows the mouse's window, not the G502 X's", function () {
+  assert.equal(Model.isValidDpi(600, 400, 1600, 200), true)
+  assert.equal(Model.isValidDpi(450, 400, 1600, 200), false)
+  assert.equal(Model.isValidDpi(4000, 400, 1600, 200), false)
+  assert.equal(Model.isValidDpi(200, 400, 1600, 200), false)
+  assert.equal(Model.snapDpi(450, 400, 1600, 200), 400)
+  assert.equal(Model.snapDpi(5000, 400, 1600, 200), 1600)
+})
+
+test("presets shrink to what the mouse supports", function () {
+  assert.deepEqual(Model.dpiPresets(400, 1600, 200), [400, 800, 1600])
+  assert.deepEqual(Model.dpiPresets(100, 25600, 50), [400, 800, 1600, 3200, 6400])
+  var narrow = Model.dpiPresets(1200, 1800, 50)
+  assert.ok(narrow.length >= 2)
+  assert.ok(narrow[0] >= 1200)
+  assert.ok(narrow[narrow.length - 1] <= 1800)
 })
 
 test("nextDpi walks the preset row and stops at both ends", function () {

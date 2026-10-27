@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "id": "morf.g502x",
-  "name": "G502 X",
-  "version": "1.0.4",
-  "author": "Quarezz",
+  "id": "grischder.rodent",
+  "name": "Rodent",
+  "version": "2.0.0",
+  "author": "grischder",
   "license": "MIT",
-  "description": "G502 X LIGHTSPEED charge and DPI in the Omarchy bar. Credits: Omarchy power panel, Solaar, AirPods for Omarchy",
+  "description": "Charge and DPI for wireless mice in the Omarchy bar. Credits: Omarchy power panel, Solaar, AirPods for Omarchy",
   "kinds": ["bar-widget"],
   "entryPoints": {
-    "barWidget": "ui/G502.qml"
+    "barWidget": "ui/Rodent.qml"
   },
   "barWidget": {
-    "displayName": "G502 X",
+    "displayName": "Mouse",
     "description": "Charge color on the bar, charging state, and DPI switching",
     "category": "System",
     "allowMultiple": false,

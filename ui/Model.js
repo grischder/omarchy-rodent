@@ -1,15 +1,15 @@
 var MAX_STATUS_CHARS = 2048
 var MAX_TEXT = 48
 
-// What the HID++ ADJUSTABLE_DPI feature takes.
+// What the HID++ ADJUSTABLE_DPI feature takes, used when a mouse reports DPI
+// but no sensor list. A mouse that does report one overrides all three.
 var DPI_MIN = 100
 var DPI_MAX = 25600
 var DPI_STEP = 50
 
-// The slider covers the range people actually use; presets and the helper still
-// reach the rest of the sensor (DPI_MIN..DPI_MAX).
-var DPI_SLIDER_MIN = 400
-var DPI_SLIDER_MAX = 6400
+// The milestones people expect in a preset row. Each one is only offered when
+// the mouse can actually be set to it.
+var DPI_PRESETS = [400, 800, 1600, 3200, 6400]
 
 function clampText(value, maxLen) {
   var limit = maxLen || MAX_TEXT
@@ -23,14 +23,19 @@ function clampText(value, maxLen) {
   return out.replace(/^\s+|\s+$/g, "")
 }
 
+// The helper reports whatever name the device gives. Receivers prefix it with
+// the vendor ("Logitech G502 X PLUS") and some older models with a category
+// ("Wireless Mouse MX Master"); the bar only has room for the model itself.
 function shortName(model) {
-  var name = clampText(model, MAX_TEXT) || "G502 X"
+  var name = clampText(model, MAX_TEXT) || "Mouse"
   name = name.replace(/^Logitech\s+/i, "")
+  name = name.replace(/^Wireless\s+Mouse\s+/i, "")
   name = name.replace(/\s+LIGHTSPEED$/i, "")
+  name = name.replace(/\s+SUPERLIGHT$/i, "")
   name = name.replace(/\s+LS$/i, "")
   name = name.replace(/\s+/g, " ").replace(/^\s+|\s+$/g, "")
   name = clampText(name, 24)
-  return name || "G502 X"
+  return name || "Mouse"
 }
 
 function mouseIcon() {
@@ -63,7 +68,13 @@ function parseStatus(raw) {
       charging: isOn(next.charging),
       full: isOn(next.full),
       discharging: isOn(next.discharging),
-      dpi: dpi > 0 ? dpi : null
+      connection: clampText(next.connection, 24),
+      dpi: dpi > 0 ? dpi : null,
+      // -1 means the mouse did not report a window; dpiWindow fills in the
+      // generic one rather than letting an unknown value become a real bound.
+      dpiMin: parseDpi(next.dpi_min),
+      dpiMax: parseDpi(next.dpi_max),
+      dpiStep: parseDpi(next.dpi_step)
     }
   } catch (e) {
     return {}
@@ -92,12 +103,65 @@ function formatDpi(dpi) {
   return String(value) + " DPI"
 }
 
-function dpiPresets() {
-  return [400, 800, 1600, 3200, 6400]
+// The window a mouse reported, or the generic one when it reported none. A
+// window that is not a sane range is treated as no window at all: the helper
+// already rejected anything it could not read, so this is belt and braces.
+function dpiWindow(min, max, step) {
+  var lo = parseDpi(min)
+  var hi = parseDpi(max)
+  var st = parseDpi(step)
+  if (lo < 0 || hi < 0 || hi <= lo) {
+    // The whole window is suspect once its ends do not make a range, so the
+    // step goes back to the default with them.
+    lo = DPI_MIN
+    hi = DPI_MAX
+    st = DPI_STEP
+  } else if (st < 0) {
+    st = DPI_STEP
+  }
+  return { min: lo, max: hi, step: st }
 }
 
-function nextDpi(current, delta) {
-  var list = dpiPresets()
+function dpiMin(min) {
+  var lo = parseDpi(min)
+  return lo > 0 && lo < DPI_MAX ? lo : DPI_MIN
+}
+
+function dpiMax(max) {
+  var hi = parseDpi(max)
+  return hi > DPI_MIN ? hi : DPI_MAX
+}
+
+function dpiStep(step) {
+  var st = parseDpi(step)
+  return st > 0 ? st : DPI_STEP
+}
+
+// Presets are a shortcut, not the whole range. A mouse whose window misses the
+// usual milestones gets four stops across its own range instead of unusable
+// buttons the helper would have to clamp.
+function dpiPresets(min, max, step) {
+  var win = dpiWindow(min, max, step)
+  var out = []
+  for (var i = 0; i < DPI_PRESETS.length; i++) {
+    var value = DPI_PRESETS[i]
+    if (value < win.min || value > win.max) continue
+    if ((value - win.min) % win.step !== 0) continue
+    out.push(value)
+  }
+  if (out.length >= 2) return out
+  var stops = 4
+  for (var j = 0; j < stops; j++) {
+    var raw = win.min + ((win.max - win.min) * j) / (stops - 1)
+    var snapped = win.min + Math.round((raw - win.min) / win.step) * win.step
+    snapped = Math.max(win.min, Math.min(win.max, snapped))
+    if (out.indexOf(snapped) < 0) out.push(snapped)
+  }
+  return out.sort(function (a, b) { return a - b })
+}
+
+function nextDpi(current, delta, presets) {
+  var list = presets && presets.length ? presets : dpiPresets()
   var value = parseDpi(current)
   var step = Number(delta)
   if (!isFinite(step) || step === 0) return value
@@ -117,38 +181,20 @@ function nextDpi(current, delta) {
   return list[idx]
 }
 
-function dpiMin() {
-  return DPI_MIN
-}
-
-function dpiMax() {
-  return DPI_MAX
-}
-
-function dpiStep() {
-  return DPI_STEP
-}
-
-function dpiSliderMin() {
-  return DPI_SLIDER_MIN
-}
-
-function dpiSliderMax() {
-  return DPI_SLIDER_MAX
-}
-
-// The presets are a shortcut, not the whole range: the slider and the helper
-// both take any value the sensor can do.
-function isValidDpi(value) {
+function isValidDpi(value, min, max, step) {
+  var win = dpiWindow(min, max, step)
   var n = parseDpi(value)
-  return n >= DPI_MIN && n <= DPI_MAX && n % DPI_STEP === 0
+  if (n < 0 || n < win.min || n > win.max) return false
+  return (n - win.min) % win.step === 0
 }
 
-function snapDpi(value) {
+function snapDpi(value, min, max, step) {
+  var win = dpiWindow(min, max, step)
   var n = parseDpi(value)
   if (n < 0) return n
-  n = Math.round(n / DPI_STEP) * DPI_STEP
-  return Math.max(DPI_MIN, Math.min(DPI_MAX, n))
+  var snapped = win.min + Math.round((n - win.min) / win.step) * win.step
+  if (snapped > win.max) snapped = win.max - ((win.max - win.min) % win.step)
+  return Math.max(win.min, Math.min(win.max, snapped))
 }
 
 function batteryBand(percent) {
@@ -203,12 +249,11 @@ if (typeof module !== "undefined") {
     parsePercent: parsePercent,
     parseDpi: parseDpi,
     formatDpi: formatDpi,
+    dpiWindow: dpiWindow,
     dpiPresets: dpiPresets,
     dpiMin: dpiMin,
     dpiMax: dpiMax,
     dpiStep: dpiStep,
-    dpiSliderMin: dpiSliderMin,
-    dpiSliderMax: dpiSliderMax,
     isValidDpi: isValidDpi,
     snapDpi: snapDpi,
     nextDpi: nextDpi,

@@ -7,7 +7,7 @@ import "Model.js" as Model
 
 BarWidget {
   id: root
-  moduleName: "morf.g502x"
+  moduleName: "grischder.rodent"
 
   readonly property bool showPercentage: Model.isOn(setting("showPercentage", true))
   readonly property int lowBatteryPercent: {
@@ -27,7 +27,14 @@ BarWidget {
   readonly property bool lowBattery: mousePresent && discharging && batteryPercent >= 0 && batteryPercent <= lowBatteryPercent
   readonly property string mouseIcon: Model.mouseIcon()
   readonly property int dpi: Model.parseDpi(status.dpi)
-  readonly property var dpiPresets: Model.dpiPresets()
+  // The mouse's own sensor window. dpiSupported is false when Solaar could not
+  // report one, which is also when a write would have nowhere to go.
+  readonly property int dpiMin: Model.dpiMin(status.dpiMin)
+  readonly property int dpiMax: Model.dpiMax(status.dpiMax)
+  readonly property int dpiStep: Model.dpiStep(status.dpiStep)
+  readonly property bool dpiSupported: Model.parseDpi(status.dpiMax) > 0 || dpi > 0
+  readonly property var dpiPresets: Model.dpiPresets(dpiMin, dpiMax, dpiStep)
+  readonly property string connection: Model.clampText(status.connection, 24)
   readonly property color batteryColor: {
     var band = Model.batteryBand(batteryPercent)
     if (band === "red") return bar ? bar.urgent : Color.urgent
@@ -37,7 +44,7 @@ BarWidget {
   }
   readonly property string modeLabel: Model.modeLabel(mousePresent, fullyCharged, charging, discharging)
   readonly property string tooltipText: {
-    if (!mousePresent) return "G502 X — not connected"
+    if (!mousePresent) return "Mouse — not connected"
     var bits = [deviceTitle]
     if (batteryPercent >= 0) bits.push(String(batteryPercent) + "%")
     if (modeLabel) bits.push(modeLabel)
@@ -144,7 +151,8 @@ BarWidget {
 
   function setDpi(value) {
     var next = Model.parseDpi(value)
-    if (!Model.isValidDpi(next) || dpiSetProc.running) return
+    if (!Model.isValidDpi(next, root.dpiMin, root.dpiMax, root.dpiStep)) return
+    if (dpiSetProc.running) return
     var merged = {}
     for (var key in status) merged[key] = status[key]
     merged.dpi = next
@@ -155,7 +163,7 @@ BarWidget {
   }
 
   function nudgeDpi(delta) {
-    root.setDpi(Model.nextDpi(root.dpi, delta))
+    root.setDpi(Model.nextDpi(root.dpi, delta, root.dpiPresets))
   }
 
   function checkLowBattery() {
@@ -194,7 +202,7 @@ BarWidget {
 
   PersistentProperties {
     id: persisted
-    reloadableId: "morf-g502x"
+    reloadableId: "rodent"
     property bool notifiedLowBattery: false
   }
 
@@ -210,7 +218,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "morf.g502x"
+    target: "grischder.rodent"
 
     function open() { root.open() }
     function close() { root.close() }

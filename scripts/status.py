@@ -1,9 +1,10 @@
 #!/usr/bin/python3
-"""Read G502 X LIGHTSPEED charge from sysfs and DPI over HID++. Prints one JSON object."""
+"""Read a wireless mouse's charge and DPI over HID++. Prints one JSON object."""
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import select
 import signal
@@ -13,38 +14,33 @@ from pathlib import Path
 
 SYSFS_ROOT = Path("/sys/class/power_supply")
 
-# G502 X family on the LIGHTSPEED dongle only.
-TRUSTED_VID = "046D"
-TRUSTED_RECEIVER_PID = "C547"
-# 409F: G502 X LIGHTSPEED, 4099: G502 X PLUS
-TRUSTED_WPIDS = ("409F", "4099")
+LOGITECH_VID = "046D"
+# The receiver families this widget speaks to. A mouse on one of these is a
+# HID++ 2.0 device; anything else (nano, 27 MHz, wired, Bluetooth) either has no
+# feature table or never goes through a receiver. The names are Solaar's own
+# receiver_kind values, so a new receiver model shows up here without a change.
+SUPPORTED_RECEIVERS = ("lightspeed", "unifying", "bolt")
+RECEIVER_LABELS = {
+    "lightspeed": "LIGHTSPEED",
+    "unifying": "Unifying",
+    "bolt": "Bolt",
+}
 
 JOB_DEADLINE_SEC = 2.0
 MAX_SYSFS_BYTES = 256
 MAX_TEXT = 48
 MAX_JSON_BYTES = 2048
 MAX_STDERR_BYTES = 4096
-# The HID++ reply JSON is ~100 bytes at its widest (dpi, percent, a status
-# label and three flags). Cutting it short at this bound leaves invalid JSON,
-# and an unparsable reply is dropped exactly like a missing mouse, which
-# silently costs the DPI reading.
-MAX_HID_REPLY = 256
+# The HID++ reply JSON carries the model, the connection and the DPI window on
+# top of the reading. Cutting it short at this bound leaves invalid JSON, and an
+# unparsable reply is dropped exactly like a missing mouse, which silently costs
+# the DPI reading.
+MAX_HID_REPLY = 512
 MAX_BATTERY_NODES = 8
-# What the HID++ ADJUSTABLE_DPI feature takes. Checking the range instead of a
-# copy of the shipped presets keeps the helper and the panel from drifting
-# apart - a stale copy silently drops writes.
-DPI_MIN = 100
-DPI_MAX = 25600
-DPI_STEP = 50
-KNOWN_MODELS = (
-    "G502 X LIGHTSPEED",
-    "Logitech G502 X LIGHTSPEED",
-    "G502 X PLUS",
-    "Logitech G502 X PLUS",
-    "Logitech G502 X LS",
-    "G502 X LS",
-    "G502 X",
-)
+# The absolute range a HID++ ADJUSTABLE_DPI write can carry. The device's own
+# window is narrower and is what the panel offers; this only bounds the command.
+ABS_DPI_MIN = 10
+ABS_DPI_MAX = 65535
 STATUS_LABELS = {
     "charging": "Charging",
     "discharging": "Discharging",
@@ -91,20 +87,48 @@ def _hid_vid_pid(uevent: str) -> tuple[str, str]:
     return "", ""
 
 
-def _trusted_battery(entry: Path) -> bool:
+def _receiver_kind(product_id) -> str:
+    """What Solaar calls this receiver family, or "" when it does not know it."""
+    text = str(product_id or "").strip()
+    if not text:
+        return ""
+    try:
+        from logitech_receiver import base_usb
+
+        info = base_usb.get_receiver_info(int(text, 16))
+    except Exception:
+        return ""
+    return str(info.get("receiver_kind") or "").strip().lower()
+
+
+def _connection(kind: str) -> str:
+    return RECEIVER_LABELS.get(kind.strip().lower(), "Wireless") if kind else "Wireless"
+
+
+def _logitech_battery(entry: Path) -> str | None:
+    """The receiver kind behind this sysfs battery, or None when it is not ours.
+
+    Without Solaar the kind is unknown and the reading is still accepted: charge
+    keeps working and there is no feature table to ask a mouse from a keyboard.
+    """
     device = entry / "device"
     try:
         hid = device.resolve()
     except OSError:
-        return False
-    vid, pid = _hid_vid_pid(_read(hid / "uevent"))
-    if vid != TRUSTED_VID or pid not in TRUSTED_WPIDS:
-        return False
+        return None
+    vid, _pid = _hid_vid_pid(_read(hid / "uevent"))
+    if vid != LOGITECH_VID:
+        return None
     parent = hid.parent
     if parent is None:
-        return False
+        return None
     pvid, ppid = _hid_vid_pid(_read(parent / "uevent"))
-    return pvid == TRUSTED_VID and ppid == TRUSTED_RECEIVER_PID
+    if pvid != LOGITECH_VID:
+        return None
+    kind = _receiver_kind(ppid)
+    if kind and kind not in SUPPORTED_RECEIVERS:
+        return None
+    return kind
 
 
 def _status_label(raw: str) -> str:
@@ -112,15 +136,9 @@ def _status_label(raw: str) -> str:
 
 
 def _model_label(raw: str) -> str:
-    name = _plain(raw, MAX_TEXT)
-    for known in KNOWN_MODELS:
-        if name.casefold() == known.casefold():
-            return known
-    # Not one of the spellings above: report the name the device gave rather
-    # than assuming the base model, since a PLUS labelled "G502 X" would be
-    # wrong on the bar, in the panel and in the notification. _plain has already
-    # bounded it to printable ASCII and MAX_TEXT, so it is safe to display.
-    return name or "G502 X"
+    # Report the name the device gave rather than guessing a model. _plain has
+    # already bounded it to printable ASCII and MAX_TEXT, so it is safe to show.
+    return _plain(raw, MAX_TEXT)
 
 
 def _empty_battery() -> dict:
@@ -132,17 +150,28 @@ def _empty_battery() -> dict:
         "charging": False,
         "full": False,
         "discharging": False,
+        "connection": "",
         "dpi": None,
+        "dpi_min": None,
+        "dpi_max": None,
+        "dpi_step": None,
     }
 
 
 def _battery() -> dict:
+    """Charge from sysfs, for any mouse behind a Logitech receiver.
+
+    This is a fallback: it needs no Solaar and no HID++ round trip, but it cannot
+    tell a mouse from a keyboard sharing the receiver, and some models expose no
+    capacity at all.
+    """
     found = 0
     for entry in sorted(SYSFS_ROOT.glob("hidpp_battery_*")):
         found += 1
         if found > MAX_BATTERY_NODES:
             break
-        if not _trusted_battery(entry):
+        kind = _logitech_battery(entry)
+        if kind is None:
             continue
         status = _status_label(_read(entry / "status"))
         percent_raw = _plain(_read(entry / "capacity"), 8)
@@ -155,35 +184,21 @@ def _battery() -> dict:
         charging = status == "Charging" or status == "Full"
         discharging = status == "Discharging"
         full = status == "Full" or (charging and percent is not None and percent >= 99)
-        return {
-            "present": True,
-            "model": _model_label(_read(entry / "model_name")),
-            "percent": percent,
-            "status": status,
-            "charging": charging and not full,
-            "full": full,
-            "discharging": discharging,
-        }
+        payload = _empty_battery()
+        payload.update(
+            {
+                "present": True,
+                "model": _model_label(_read(entry / "model_name")),
+                "percent": percent,
+                "status": status,
+                "charging": charging and not full,
+                "full": full,
+                "discharging": discharging,
+                "connection": _connection(kind),
+            }
+        )
+        return payload
     return _empty_battery()
-
-
-def _trusted_receiver(info) -> bool:
-    return _id(getattr(info, "vendor_id", None)) == TRUSTED_VID and _id(
-        getattr(info, "product_id", None)
-    ) == TRUSTED_RECEIVER_PID
-
-
-def _trusted_device(dev) -> bool:
-    if _id(getattr(dev, "wpid", None)) not in TRUSTED_WPIDS:
-        return False
-    rec = getattr(dev, "receiver", None)
-    rec_pid = _id(getattr(rec, "product_id", None) if rec is not None else None)
-    rec_vid = _id(getattr(rec, "vendor_id", None) if rec is not None else None)
-    if rec_pid != TRUSTED_RECEIVER_PID:
-        return False
-    if rec_vid and rec_vid != TRUSTED_VID:
-        return False
-    return True
 
 
 def _close(dev) -> None:
@@ -195,55 +210,140 @@ def _close(dev) -> None:
             pass
 
 
-def _devices():
+def _device_name(dev) -> str:
+    for attr in ("name", "codename"):
+        try:
+            name = _plain(getattr(dev, attr, ""))
+        except Exception:
+            name = ""
+        if name:
+            return name
+    return ""
+
+
+def _is_mouse(dev) -> bool:
+    try:
+        return str(getattr(dev, "kind", "") or "").strip().lower() == "mouse"
+    except Exception:
+        return False
+
+
+def _mice():
+    """Yield (device, receiver_kind) for mice on a supported receiver."""
     from logitech_receiver import base
     from logitech_receiver import receiver as hid_receiver
 
     for info in base.receivers_and_devices():
         if getattr(info, "isDevice", False):
             continue
-        if not _trusted_receiver(info):
+        kind = _receiver_kind(getattr(info, "product_id", None))
+        if kind not in SUPPORTED_RECEIVERS:
             continue
         try:
             opened = hid_receiver.create_receiver(base, info)
-            candidates = list(opened) if opened else []
+        except Exception:
+            continue
+        if not opened:
+            continue
+        try:
+            candidates = list(opened)
         except Exception:
             continue
         for item in candidates:
-            if item and _trusted_device(item):
-                yield item
+            if item and _is_mouse(item):
+                yield item, kind
 
 
-def _read_unified_battery(dev) -> dict:
-    from logitech_receiver.hidpp20_constants import SupportedFeature
-
-    reply = dev.feature_request(SupportedFeature.UNIFIED_BATTERY, 0x10)
-    if not reply or len(reply) < 4:
-        return {}
-    percent = int(reply[0])
-    status_byte = int(reply[2])
-    ext_power = int(reply[3])
-    if percent <= 0 or percent > 100:
-        percent = None
-    charging = status_byte in (1, 2, 4) or (ext_power != 0 and status_byte == 0)
-    full = status_byte == 3
-    discharging = status_byte == 0 and not charging
-    if full:
+def _battery_state(code: int | None, percent: int | None) -> dict:
+    """Map Solaar's BatteryStatus value onto the labels the panel already uses."""
+    charging = False
+    full = False
+    discharging = False
+    if code == 3:  # FULL
         label = "Full"
-        charging = False
-    elif charging:
+        full = True
+    elif code in (1, 2, 4):  # RECHARGING, ALMOST_FULL, SLOW_RECHARGE
         label = "Charging"
-    elif discharging:
+        charging = True
+    elif code == 0:  # DISCHARGING
         label = "Discharging"
+        discharging = True
     else:
         label = "Unknown"
+    if charging and percent is not None and percent >= 99:
+        label = "Full"
+        charging = False
+        full = True
     return {
-        "percent": percent,
         "status": label,
         "charging": charging,
         "full": full,
         "discharging": discharging,
     }
+
+
+def _read_battery(dev) -> dict:
+    """Battery through Solaar, which covers every battery feature mice ship."""
+    try:
+        report = dev.battery()
+    except Exception:
+        return {}
+    if report is None:
+        return {}
+    level = getattr(report, "level", None)
+    try:
+        percent = int(level) if level is not None else None
+    except (TypeError, ValueError):
+        percent = None
+    if percent is not None:
+        # 0 means "no reading" rather than an empty battery, and a value past
+        # 100 is a bad parse; neither may reach the bar as a real charge.
+        percent = max(0, min(100, percent)) if 0 < percent <= 100 else None
+    # Solaar models this as an enum.Flag, which does not cast with int().
+    raw_status = getattr(report, "status", None)
+    raw_status = getattr(raw_status, "value", raw_status)
+    try:
+        code = int(raw_status) if raw_status is not None else None
+    except (TypeError, ValueError):
+        code = None
+    state = _battery_state(code, percent)
+    if percent is not None:
+        state["percent"] = percent
+    return state
+
+
+def _dpi_list(dev) -> list[int]:
+    from logitech_receiver.hidpp20_constants import SupportedFeature
+    from logitech_receiver.settings_templates import produce_dpi_list
+
+    try:
+        return produce_dpi_list(SupportedFeature.ADJUSTABLE_DPI, 0x10, 1, dev, 0)
+    except Exception:
+        return []
+
+
+def _dpi_window(values: list[int]) -> tuple[int | None, int | None, int | None]:
+    """Reduce the sensor list to the low, high and step the panel should offer."""
+    clean = [int(v) for v in values if isinstance(v, int) and v > 0]
+    if len(clean) < 2:
+        return None, None, None
+    low, high = clean[0], clean[-1]
+    if high <= low:
+        return None, None, None
+    step = 0
+    for before, after in zip(clean, clean[1:]):
+        step = math.gcd(step, after - before)
+    return low, high, step if step > 0 else None
+
+
+def _snap_dpi(value: int, low: int | None, high: int | None, step: int | None) -> int:
+    if low is not None and high is not None:
+        value = max(low, min(high, value))
+    if low is not None and step:
+        value = low + round((value - low) / step) * step
+        if high is not None:
+            value = min(high, value)
+    return int(value)
 
 
 def _read_dpi(dev) -> int | None:
@@ -274,29 +374,25 @@ def _set_dpi(dev, dpi: int) -> int | None:
 
 
 def _hid_work(set_to: int | None) -> dict:
-    matched = None
-    out = {
-        "dpi": None,
-        "percent": None,
-        "status": "",
-        "charging": False,
-        "full": False,
-        "discharging": False,
-    }
+    out = _empty_battery()
     try:
-        for dev in _devices():
-            matched = dev
-            out.update(_read_unified_battery(dev))
+        for dev, kind in _mice():
+            out["present"] = True
+            out["model"] = _device_name(dev)
+            out["connection"] = _connection(kind)
+            out.update(_read_battery(dev))
+            low, high, step = _dpi_window(_dpi_list(dev))
+            out["dpi_min"] = low
+            out["dpi_max"] = high
+            out["dpi_step"] = step
             if set_to is not None:
-                out["dpi"] = _set_dpi(dev, set_to)
+                out["dpi"] = _set_dpi(dev, _snap_dpi(set_to, low, high, step))
             else:
                 out["dpi"] = _read_dpi(dev)
+            _close(dev)
             return out
     except Exception:
         return out
-    finally:
-        if matched is not None:
-            _close(matched)
     return out
 
 
@@ -366,14 +462,7 @@ def _become_session() -> None:
 
 
 def _hid_report(set_to: int | None) -> dict:
-    empty = {
-        "dpi": None,
-        "percent": None,
-        "status": "",
-        "charging": False,
-        "full": False,
-        "discharging": False,
-    }
+    empty = _empty_battery()
     try:
         r, w = os.pipe()
     except OSError:
@@ -467,7 +556,7 @@ def _parse_set_dpi(argv: list[str]) -> int | None:
         value = int(argv[2])
     except ValueError:
         return None
-    if value < DPI_MIN or value > DPI_MAX or value % DPI_STEP:
+    if value < ABS_DPI_MIN or value > ABS_DPI_MAX:
         return None
     return value
 
@@ -523,6 +612,18 @@ def _on_term(_signum, _frame) -> None:
     os._exit(0)
 
 
+def _merge(payload: dict, hid: dict) -> dict:
+    """Solaar's reading wins; sysfs still fills whatever it did not report."""
+    payload["present"] = True
+    for key in ("model", "connection", "percent", "status", "charging", "full", "discharging"):
+        value = hid.get(key)
+        if value is not None and value != "":
+            payload[key] = value
+    for key in ("dpi", "dpi_min", "dpi_max", "dpi_step"):
+        payload[key] = hid.get(key)
+    return payload
+
+
 def main() -> int:
     global _payload
     _become_session()
@@ -531,29 +632,15 @@ def main() -> int:
     sys.stdout = _CappedStdout(sys.stdout, MAX_JSON_BYTES + 1)
     signal.signal(signal.SIGTERM, _on_term)
     payload = _battery()
-    payload["dpi"] = None
     _payload = payload
     wanted = _parse_set_dpi(sys.argv)
-    if payload["present"]:
-        hid = _hid_report(wanted)
-        if hid.get("dpi") is not None:
-            try:
-                payload["dpi"] = int(hid["dpi"])
-            except (TypeError, ValueError):
-                payload["dpi"] = None
-        if hid.get("percent") is not None:
-            try:
-                payload["percent"] = max(0, min(100, int(hid["percent"])))
-            except (TypeError, ValueError):
-                pass
-        if hid.get("status") in STATUS_LABELS.values():
-            payload["status"] = hid["status"]
-            payload["charging"] = hid.get("charging") is True
-            payload["full"] = hid.get("full") is True
-            payload["discharging"] = hid.get("discharging") is True
-        _payload = payload
-    _payload = None
-    _emit(payload)
+    hid = _hid_report(wanted)
+    if hid.get("present"):
+        payload = _merge(payload, hid)
+    elif not payload["present"]:
+        payload = _empty_battery()
+    _payload = payload
+    _flush_payload()
     return 0
 
 

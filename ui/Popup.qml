@@ -6,7 +6,7 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "morf.g502x"
+  moduleName: "grischder.rodent"
   manageIpc: false
 
   property var anchorItem: null
@@ -18,7 +18,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property color dim: Qt.darker(foreground, 1.4)
 
-  readonly property string deviceTitle: (hostWidget && hostWidget.deviceTitle) ? hostWidget.deviceTitle : "G502 X"
+  readonly property string deviceTitle: (hostWidget && hostWidget.deviceTitle) ? hostWidget.deviceTitle : "Mouse"
   readonly property string mouseIcon: (hostWidget && hostWidget.mouseIcon) ? hostWidget.mouseIcon : Model.mouseIcon()
   readonly property int batteryPercent: hostWidget && hostWidget.batteryPercent !== undefined ? hostWidget.batteryPercent : -1
   readonly property real batteryFraction: hostWidget && hostWidget.batteryFraction !== undefined ? hostWidget.batteryFraction : 0
@@ -28,6 +28,11 @@ Panel {
   readonly property bool lowBattery: !!(hostWidget && hostWidget.lowBattery)
   readonly property string modeLabel: (hostWidget && hostWidget.modeLabel) ? hostWidget.modeLabel : ""
   readonly property int dpi: hostWidget && hostWidget.dpi !== undefined ? hostWidget.dpi : -1
+  readonly property int dpiMin: (hostWidget && hostWidget.dpiMin > 0) ? hostWidget.dpiMin : Model.dpiMin()
+  readonly property int dpiMax: (hostWidget && hostWidget.dpiMax > 0) ? hostWidget.dpiMax : Model.dpiMax()
+  readonly property int dpiStep: (hostWidget && hostWidget.dpiStep > 0) ? hostWidget.dpiStep : Model.dpiStep()
+  readonly property bool dpiSupported: !!(hostWidget && hostWidget.dpiSupported)
+  readonly property string connection: (hostWidget && hostWidget.connection) ? hostWidget.connection : ""
   readonly property var dpiPresets: (hostWidget && hostWidget.dpiPresets) ? hostWidget.dpiPresets : Model.dpiPresets()
   readonly property bool dpiBusy: !!(hostWidget && hostWidget.dpiBusy)
   readonly property color fillColor: (hostWidget && hostWidget.batteryColor) ? hostWidget.batteryColor : (lowBattery ? urgent : foreground)
@@ -38,10 +43,11 @@ Panel {
   // snapped preview. Between drags the knob follows the widget's DPI reading -
   // the value a write asked for, then whatever the helper reports back when it
   // exits - so preset buttons and the mouse's own DPI keys move it too. A write
-  // that does not take snaps the knob back silently. The track widens to hold a
-  // DPI outside the usual window rather than pinning the knob to an end.
-  readonly property int sliderMin: Math.min(Model.dpiSliderMin(), root.dpi > 0 ? root.dpi : Model.dpiSliderMin())
-  readonly property int sliderMax: Math.max(Model.dpiSliderMax(), root.dpi > 0 ? root.dpi : Model.dpiSliderMax())
+  // that does not take snaps the knob back silently. The track is the mouse's
+  // own window, widened if the reading somehow sits outside it, rather than
+  // pinning the knob to an end.
+  readonly property int sliderMin: Math.min(root.dpiMin, root.dpi > 0 ? root.dpi : root.dpiMin)
+  readonly property int sliderMax: Math.max(root.dpiMax, root.dpi > 0 ? root.dpi : root.dpiMax)
   readonly property int sliderValue: dpiPreview > 0
     ? dpiPreview
     : Math.max(root.sliderMin, Math.min(root.sliderMax, root.dpi > 0 ? root.dpi : root.sliderMin))
@@ -200,7 +206,7 @@ Panel {
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair { label: "State"; value: root.modeLabel || "—" }
-            InfoPair { label: "Connection"; value: "LIGHTSPEED" }
+            InfoPair { label: "Connection"; value: root.connection || "—" }
           }
 
           Column {
@@ -213,11 +219,13 @@ Panel {
 
         PanelSeparator {
           foreground: root.foreground
+          visible: root.dpiSupported
         }
 
         Column {
           width: parent.width
           spacing: Style.space(10)
+          visible: root.dpiSupported
 
           PanelSectionHeader {
             text: "SENSITIVITY"
@@ -236,7 +244,7 @@ Panel {
             minimum: root.sliderMin
             maximum: root.sliderMax
             integer: true
-            step: Model.dpiStep
+            step: root.dpiStep
             enabled: !root.dpiBusy
             value: root.sliderValue
 
