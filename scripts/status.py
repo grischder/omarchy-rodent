@@ -29,18 +29,20 @@ RECEIVER_LABELS = {
 JOB_DEADLINE_SEC = 2.0
 MAX_SYSFS_BYTES = 256
 MAX_TEXT = 48
-MAX_JSON_BYTES = 2048
+MAX_JSON_BYTES = 8192
 MAX_STDERR_BYTES = 4096
 # The HID++ reply JSON carries the model, the connection and the DPI window on
 # top of the reading. Cutting it short at this bound leaves invalid JSON, and an
 # unparsable reply is dropped exactly like a missing mouse, which silently costs
 # the DPI reading.
-MAX_HID_REPLY = 512
+MAX_HID_REPLY = 8192
 MAX_BATTERY_NODES = 8
 # The absolute range a HID++ ADJUSTABLE_DPI write can carry. The device's own
 # window is narrower and is what the panel offers; this only bounds the command.
 ABS_DPI_MIN = 10
 ABS_DPI_MAX = 65535
+RATE_MIN_HZ = 100
+RATE_MAX_HZ = 10000
 STATUS_LABELS = {
     "charging": "Charging",
     "discharging": "Discharging",
@@ -155,6 +157,9 @@ def _empty_battery() -> dict:
         "dpi_min": None,
         "dpi_max": None,
         "dpi_step": None,
+        "dpi_values": None,
+        "rate_hz": None,
+        "rates_hz": None,
     }
 
 
@@ -322,21 +327,37 @@ def _dpi_list(dev) -> list[int]:
         return []
 
 
-def _dpi_window(values: list[int]) -> tuple[int | None, int | None, int | None]:
-    """Reduce the sensor list to the low, high and step the panel should offer."""
-    clean = [int(v) for v in values if isinstance(v, int) and v > 0]
+def _dpi_shape(values: list[int]) -> tuple[int | None, int | None, int | None, list[int] | None]:
+    """Describe a sensor list as a window when it is uniform, else as the list.
+
+    Most gaming mice report every value between their ends, so low/high/step says
+    everything and the panel gets a plain slider. Some report a sparse list that
+    is dense where people actually aim (the PRO X Superlight: 89 values, most of
+    them under 1000), and a step would invent values the mouse cannot take. In
+    that case the list itself travels to the panel.
+    """
+    clean = sorted({int(v) for v in values if isinstance(v, int) and v > 0})
     if len(clean) < 2:
-        return None, None, None
+        return None, None, None, None
     low, high = clean[0], clean[-1]
-    if high <= low:
-        return None, None, None
     step = 0
     for before, after in zip(clean, clean[1:]):
         step = math.gcd(step, after - before)
-    return low, high, step if step > 0 else None
+    if step > 0 and len(clean) == (high - low) // step + 1:
+        return low, high, step, None
+    return None, None, None, clean
 
 
-def _snap_dpi(value: int, low: int | None, high: int | None, step: int | None) -> int:
+def _snap_dpi(
+    value: int,
+    low: int | None,
+    high: int | None,
+    step: int | None,
+    allowed: list[int] | None = None,
+) -> int:
+    if allowed:
+        # Nearest allowed value; on a tie the lower one, so the result is stable.
+        return int(min(allowed, key=lambda candidate: (abs(candidate - value), candidate)))
     if low is not None and high is not None:
         value = max(low, min(high, value))
     if low is not None and step:
@@ -347,6 +368,69 @@ def _snap_dpi(value: int, low: int | None, high: int | None, step: int | None) -
         if high is not None:
             value = min(high, value)
     return int(value)
+
+
+def _basic_rates_hz(flags: int) -> list[int]:
+    """REPORT_RATE choices: one bit per millisecond, 1 ms = 1000 Hz."""
+    return sorted(1000 // ms for bit, ms in enumerate(range(1, 9)) if flags & (1 << bit))
+
+
+def _extended_rates_hz(flags: int) -> list[int]:
+    """EXTENDED_ADJUSTABLE_REPORT_RATE choices, one bit per slot."""
+    table = (125, 250, 500, 1000, 2000, 4000, 8000)
+    return [hz for slot, hz in enumerate(table) if flags & (1 << slot)]
+
+
+def _extended_rate_slot(hz: int) -> int | None:
+    table = (125, 250, 500, 1000, 2000, 4000, 8000)
+    try:
+        return table.index(hz)
+    except ValueError:
+        return None
+
+
+def _read_rate(dev) -> tuple[int | None, list[int]]:
+    """Current polling rate and the ones the mouse accepts, in Hz."""
+    from logitech_receiver.hidpp20_constants import SupportedFeature
+
+    try:
+        reply = dev.feature_request(SupportedFeature.REPORT_RATE, 0x00)
+        if reply and len(reply) >= 1:
+            rates = _basic_rates_hz(int(reply[0]))
+            current = dev.feature_request(SupportedFeature.REPORT_RATE, 0x10)
+            hz = 1000 // int(current[0]) if current and int(current[0]) > 0 else None
+            return (hz if hz in rates else None), rates
+        reply = dev.feature_request(SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x10)
+        if reply and len(reply) >= 2:
+            rates = _extended_rates_hz((int(reply[0]) << 8) | int(reply[1]))
+            current = dev.feature_request(SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x20)
+            slot = int(current[0]) if current else -1
+            table = (125, 250, 500, 1000, 2000, 4000, 8000)
+            hz = table[slot] if 0 <= slot < len(table) else None
+            return (hz if hz in rates else None), rates
+    except Exception:
+        return None, []
+    return None, []
+
+
+def _set_rate(dev, hz: int) -> tuple[int | None, list[int]]:
+    from logitech_receiver.hidpp20_constants import SupportedFeature
+
+    try:
+        reply = dev.feature_request(SupportedFeature.REPORT_RATE, 0x00)
+        if reply and len(reply) >= 1 and hz in _basic_rates_hz(int(reply[0])):
+            dev.feature_request(SupportedFeature.REPORT_RATE, 0x20, bytes([1000 // hz]))
+            return _read_rate(dev)
+        reply = dev.feature_request(SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x10)
+        if reply and len(reply) >= 2:
+            rates = _extended_rates_hz((int(reply[0]) << 8) | int(reply[1]))
+            slot = _extended_rate_slot(hz)
+            if hz in rates and slot is not None:
+                dev.feature_request(SupportedFeature.EXTENDED_ADJUSTABLE_REPORT_RATE, 0x30, bytes([slot]))
+                return _read_rate(dev)
+    except Exception:
+        pass
+    return _read_rate(dev)
 
 
 def _read_dpi(dev) -> int | None:
@@ -376,7 +460,7 @@ def _set_dpi(dev, dpi: int) -> int | None:
     return int(current)
 
 
-def _hid_work(set_to: int | None) -> dict:
+def _hid_work(set_to: int | None, set_rate_to: int | None) -> dict:
     out = _empty_battery()
     try:
         for dev, kind in _mice():
@@ -384,14 +468,19 @@ def _hid_work(set_to: int | None) -> dict:
             out["model"] = _device_name(dev)
             out["connection"] = _connection(kind)
             out.update(_read_battery(dev))
-            low, high, step = _dpi_window(_dpi_list(dev))
+            low, high, step, allowed = _dpi_shape(_dpi_list(dev))
             out["dpi_min"] = low
             out["dpi_max"] = high
             out["dpi_step"] = step
+            out["dpi_values"] = allowed
             if set_to is not None:
-                out["dpi"] = _set_dpi(dev, _snap_dpi(set_to, low, high, step))
+                out["dpi"] = _set_dpi(dev, _snap_dpi(set_to, low, high, step, allowed))
             else:
                 out["dpi"] = _read_dpi(dev)
+            if set_rate_to is not None:
+                out["rate_hz"], out["rates_hz"] = _set_rate(dev, set_rate_to)
+            else:
+                out["rate_hz"], out["rates_hz"] = _read_rate(dev)
             _close(dev)
             return out
     except Exception:
@@ -464,7 +553,7 @@ def _become_session() -> None:
         pass
 
 
-def _hid_report(set_to: int | None) -> dict:
+def _hid_report(set_to: int | None, set_rate_to: int | None) -> dict:
     empty = _empty_battery()
     try:
         r, w = os.pipe()
@@ -481,7 +570,7 @@ def _hid_report(set_to: int | None) -> dict:
         _silence_fd(1)
         _silence_fd(2)
         try:
-            payload = _hid_work(set_to)
+            payload = _hid_work(set_to, set_rate_to)
             msg = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("ascii")
             os.write(w, msg[:MAX_HID_REPLY])
         except Exception:
@@ -560,6 +649,18 @@ def _parse_set_dpi(argv: list[str]) -> int | None:
     except ValueError:
         return None
     if value < ABS_DPI_MIN or value > ABS_DPI_MAX:
+        return None
+    return value
+
+
+def _parse_set_rate(argv: list[str]) -> int | None:
+    if len(argv) < 3 or argv[1] != "--set-rate":
+        return None
+    try:
+        value = int(argv[2])
+    except ValueError:
+        return None
+    if value < RATE_MIN_HZ or value > RATE_MAX_HZ:
         return None
     return value
 
@@ -644,7 +745,7 @@ def _merge(payload: dict, hid: dict) -> dict:
         value = hid.get(key)
         if value is not None and value != "":
             payload[key] = value
-    for key in ("dpi", "dpi_min", "dpi_max", "dpi_step"):
+    for key in ("dpi", "dpi_min", "dpi_max", "dpi_step", "dpi_values", "rate_hz", "rates_hz"):
         payload[key] = hid.get(key)
     return payload
 
@@ -659,7 +760,8 @@ def main() -> int:
     payload = _battery()
     _payload = payload
     wanted = _parse_set_dpi(sys.argv)
-    hid = _hid_report(wanted)
+    wanted_rate = _parse_set_rate(sys.argv)
+    hid = _hid_report(wanted, wanted_rate)
     if hid.get("present"):
         payload = _merge(payload, hid)
     elif not payload["present"]:

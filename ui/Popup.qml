@@ -32,6 +32,11 @@ Panel {
   readonly property int dpiMax: (hostWidget && hostWidget.dpiMax > 0) ? hostWidget.dpiMax : Model.dpiMax()
   readonly property int dpiStep: (hostWidget && hostWidget.dpiStep > 0) ? hostWidget.dpiStep : Model.dpiStep()
   readonly property bool dpiSupported: !!(hostWidget && hostWidget.dpiSupported)
+  readonly property var dpiValues: (hostWidget && hostWidget.dpiValues) ? hostWidget.dpiValues : []
+  readonly property bool dpiIndexed: dpiValues.length > 1
+  readonly property int rate: (hostWidget && hostWidget.rate > 0) ? hostWidget.rate : -1
+  readonly property var rates: (hostWidget && hostWidget.rates) ? hostWidget.rates : []
+  readonly property bool rateSupported: !!(hostWidget && hostWidget.rateSupported)
   readonly property string connection: (hostWidget && hostWidget.connection) ? hostWidget.connection : ""
   readonly property var dpiPresets: (hostWidget && hostWidget.dpiPresets) ? hostWidget.dpiPresets : Model.dpiPresets()
   readonly property bool dpiBusy: !!(hostWidget && hostWidget.dpiBusy)
@@ -46,16 +51,40 @@ Panel {
   // that does not take snaps the knob back silently. The track is the mouse's
   // own window, widened if the reading somehow sits outside it, rather than
   // pinning the knob to an end.
-  readonly property int sliderMin: Math.min(root.dpiMin, root.dpi > 0 ? root.dpi : root.dpiMin)
-  readonly property int sliderMax: Math.max(root.dpiMax, root.dpi > 0 ? root.dpi : root.dpiMax)
-  readonly property int sliderValue: dpiPreview > 0
-    ? dpiPreview
-    : Math.max(root.sliderMin, Math.min(root.sliderMax, root.dpi > 0 ? root.dpi : root.sliderMin))
+  // A sparse sensor list is walked by index, so the values people actually use
+  // get proportionate travel on the track instead of the first few percent of
+  // a DPI-sized range.
+  readonly property int sliderMin: root.dpiIndexed ? 0 : Math.min(root.dpiMin, root.dpi > 0 ? root.dpi : root.dpiMin)
+  readonly property int sliderMax: root.dpiIndexed ? root.dpiValues.length - 1 : Math.max(root.dpiMax, root.dpi > 0 ? root.dpi : root.dpiMax)
+  readonly property int sliderStep: root.dpiIndexed ? 1 : root.dpiStep
+  readonly property int sliderValue: {
+    if (root.dpiIndexed) {
+      var idx = Model.dpiIndex(root.dpiPreview > 0 ? root.dpiPreview : root.dpi, root.dpiValues)
+      return idx < 0 ? 0 : idx
+    }
+    return dpiPreview > 0
+      ? dpiPreview
+      : Math.max(root.sliderMin, Math.min(root.sliderMax, root.dpi > 0 ? root.dpi : root.sliderMin))
+  }
+
+  // What a slider position means: a list entry when the mouse sent a list, a
+  // snapped DPI otherwise.
+  function previewFor(position) {
+    if (root.dpiIndexed) {
+      var idx = Math.max(0, Math.min(root.dpiValues.length - 1, Math.round(position)))
+      return root.dpiValues[idx]
+    }
+    return Model.snapDpi(position, root.dpiMin, root.dpiMax, root.dpiStep, root.dpiValues)
+  }
 
   readonly property string heroStatusText: modeLabel || "Standing by"
 
   function setDpi(value) {
     if (hostWidget && typeof hostWidget.setDpi === "function") hostWidget.setDpi(value)
+  }
+
+  function setRate(hz) {
+    if (hostWidget && typeof hostWidget.setRate === "function") hostWidget.setRate(hz)
   }
 
   function switchPanel(direction) {
@@ -244,15 +273,15 @@ Panel {
             minimum: root.sliderMin
             maximum: root.sliderMax
             integer: true
-            step: root.dpiStep
+            step: root.sliderStep
             enabled: !root.dpiBusy
             value: root.sliderValue
 
             // Follow the drag, but only write once it is let go: every move
             // would otherwise be a HID++ round trip.
-            onMoved: function(v) { root.dpiPreview = Model.snapDpi(v) }
+            onMoved: function(v) { root.dpiPreview = root.previewFor(v) }
             onReleased: function(v) {
-              root.dpiPreview = Model.snapDpi(v)
+              root.dpiPreview = root.previewFor(v)
               root.setDpi(root.dpiPreview)
               root.dpiPreview = -1
             }
@@ -287,6 +316,51 @@ Panel {
                 onHovered: function(h) {
                   if (h) root.dpiCursor = index
                 }
+              }
+            }
+          }
+        }
+
+        PanelSeparator {
+          foreground: root.foreground
+          visible: root.rateSupported
+        }
+
+        Column {
+          width: parent.width
+          spacing: Style.space(10)
+          visible: root.rateSupported
+
+          PanelSectionHeader {
+            text: "POLLING RATE"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+          }
+
+          Row {
+            id: rateRow
+            width: parent.width
+            spacing: Style.space(6)
+
+            readonly property real cellWidth: root.rates.length > 0
+              ? (width - spacing * (root.rates.length - 1)) / root.rates.length
+              : 0
+
+            Repeater {
+              model: root.rates
+              Button {
+                required property var modelData
+                width: rateRow.cellWidth
+                text: String(modelData) + " Hz"
+                fontSize: Style.font.bodySmall
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                horizontalPadding: Style.spacing.controlPaddingX
+                verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+                bordered: true
+                enabled: !root.dpiBusy
+                active: root.rate === modelData
+                onClicked: root.setRate(modelData)
               }
             }
           }

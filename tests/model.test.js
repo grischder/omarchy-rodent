@@ -75,8 +75,28 @@ test("parseStatus reads a full payload", function () {
     dpi: 1300,
     dpiMin: 100,
     dpiMax: 25600,
-    dpiStep: 50
+    dpiStep: 50,
+    dpiValues: [],
+    rate: -1,
+    rates: []
   })
+})
+
+test("parseStatus carries a sparse sensor list and the polling rates", function () {
+  var status = Model.parseStatus(
+    '{"present":true,"dpi":1600,"dpi_values":[100,200,400,800,1600],' +
+    '"rate_hz":1000,"rates_hz":[125,250,500,1000]}'
+  )
+  assert.deepEqual(status.dpiValues, [100, 200, 400, 800, 1600])
+  assert.equal(status.rate, 1000)
+  assert.deepEqual(status.rates, [125, 250, 500, 1000])
+})
+
+test("parseNumberList refuses junk and bounds what it accepts", function () {
+  assert.deepEqual(Model.parseNumberList(null), [])
+  assert.deepEqual(Model.parseNumberList("800"), [])
+  assert.deepEqual(Model.parseNumberList([800, "400", -1, 0, 800, 2.6]), [3, 400, 800])
+  assert.deepEqual(Model.parseNumberList(["lots", null, {}]), [])
 })
 
 test("parseStatus marks an unreported DPI window instead of inventing one", function () {
@@ -177,6 +197,37 @@ test("validity follows the mouse's window, not the G502 X's", function () {
   assert.equal(Model.isValidDpi(200, 400, 1600, 200), false)
   assert.equal(Model.snapDpi(450, 400, 1600, 200), 400)
   assert.equal(Model.snapDpi(5000, 400, 1600, 200), 1600)
+})
+
+test("nearestDpi and dpiIndex agree on a sparse list", function () {
+  var values = [100, 200, 400, 800, 1200, 1600]
+  assert.equal(Model.nearestDpi(1150, values), 1200)
+  assert.equal(Model.nearestDpi(1000, values), 800)
+  assert.equal(Model.nearestDpi(1, values), 100)
+  assert.equal(Model.nearestDpi(9000, values), 1600)
+  assert.equal(Model.nearestDpi(9000, []), -1)
+  assert.equal(Model.dpiIndex(1150, values), 4)
+  assert.equal(Model.dpiIndex(9000, values), 5)
+  assert.equal(Model.dpiIndex(800, []), -1)
+})
+
+test("a sparse list decides what is valid and what a write snaps to", function () {
+  var values = [100, 200, 400, 800, 1200, 1600]
+  assert.equal(Model.isValidDpi(1200, -1, -1, -1, values), true)
+  assert.equal(Model.isValidDpi(1000, -1, -1, -1, values), false)
+  assert.equal(Model.snapDpi(1000, -1, -1, -1, values), 800)
+  assert.equal(Model.snapDpi(500, -1, -1, -1, values), 400)
+})
+
+test("presets come from the list when the mouse sent one", function () {
+  var values = [100, 200, 300, 400, 500, 800, 1200, 1600, 3200, 6400, 12000, 25500]
+  assert.deepEqual(Model.dpiPresets(-1, -1, -1, values), [400, 800, 1600, 3200, 6400])
+  var narrow = [100, 150, 200, 250, 300]
+  var picked = Model.dpiPresets(-1, -1, -1, narrow)
+  assert.ok(picked.length >= 2)
+  for (var i = 0; i < picked.length; i++) {
+    assert.ok(narrow.indexOf(picked[i]) >= 0, String(picked[i]) + " is not in the list")
+  }
 })
 
 test("presets shrink to what the mouse supports", function () {

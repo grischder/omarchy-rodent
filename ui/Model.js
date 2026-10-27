@@ -1,4 +1,4 @@
-var MAX_STATUS_CHARS = 2048
+var MAX_STATUS_CHARS = 16384
 var MAX_TEXT = 48
 
 // What the HID++ ADJUSTABLE_DPI feature takes, used when a mouse reports DPI
@@ -52,6 +52,21 @@ function allowStatus(value) {
   return ""
 }
 
+// A list the helper sent: positive whole numbers only, deduplicated and sorted.
+// A sensor list can be long (the PRO X Superlight reports 89 values), so the
+// cap keeps a hostile or broken reply from growing the UI's state unbounded.
+var MAX_LIST = 1024
+
+function parseNumberList(value) {
+  if (!value || typeof value !== "object" || typeof value.length !== "number") return []
+  var out = []
+  for (var i = 0; i < value.length && out.length < MAX_LIST; i++) {
+    var n = parseDpi(value[i])
+    if (n > 0 && out.indexOf(n) < 0) out.push(n)
+  }
+  return out.sort(function (a, b) { return a - b })
+}
+
 function parseStatus(raw) {
   var text = String(raw || "")
   if (text.length > MAX_STATUS_CHARS) return {}
@@ -74,7 +89,11 @@ function parseStatus(raw) {
       // generic one rather than letting an unknown value become a real bound.
       dpiMin: parseDpi(next.dpi_min),
       dpiMax: parseDpi(next.dpi_max),
-      dpiStep: parseDpi(next.dpi_step)
+      dpiStep: parseDpi(next.dpi_step),
+      // Non-empty only when the mixer is not uniform; it then beats the window.
+      dpiValues: parseNumberList(next.dpi_values),
+      rate: parseDpi(next.rate_hz),
+      rates: parseNumberList(next.rates_hz)
     }
   } catch (e) {
     return {}
@@ -137,10 +156,44 @@ function dpiStep(step) {
   return st > 0 ? st : DPI_STEP
 }
 
-// Presets are a shortcut, not the whole range. A mouse whose window misses the
-// usual milestones gets four stops across its own range instead of unusable
-// buttons the helper would have to clamp.
-function dpiPresets(min, max, step) {
+// The closest value the mouse actually accepts, or -1 for an empty list.
+// Ties go to the lower value so the result does not depend on list order.
+function nearestDpi(value, values) {
+  if (!values || !values.length) return -1
+  var n = parseDpi(value)
+  if (n < 0) return -1
+  var best = values[0]
+  for (var i = 1; i < values.length; i++) {
+    if (Math.abs(values[i] - n) < Math.abs(best - n)) best = values[i]
+  }
+  return best
+}
+
+// Where a reading sits on a list-driven slider. -1 when there is no list.
+function dpiIndex(value, values) {
+  if (!values || !values.length) return -1
+  var target = nearestDpi(value, values)
+  return target < 0 ? -1 : values.indexOf(target)
+}
+
+// Presets are a shortcut, not the whole range. A sparse sensor list decides
+// what is offered; a mouse whose window misses the usual milestones gets four
+// stops across its own range instead of unusable buttons.
+function dpiPresets(min, max, step, values) {
+  if (values && values.length) {
+    var picked = []
+    for (var k = 0; k < DPI_PRESETS.length; k++) {
+      var near = nearestDpi(DPI_PRESETS[k], values)
+      if (near > 0 && picked.indexOf(near) < 0) picked.push(near)
+    }
+    if (picked.length >= 2) return picked.sort(function (a, b) { return a - b })
+    var span = 4
+    for (var m = 0; m < span; m++) {
+      var at = Math.round(((values.length - 1) * m) / (span - 1))
+      if (picked.indexOf(values[at]) < 0) picked.push(values[at])
+    }
+    return picked.sort(function (a, b) { return a - b })
+  }
   var win = dpiWindow(min, max, step)
   var out = []
   for (var i = 0; i < DPI_PRESETS.length; i++) {
@@ -181,17 +234,20 @@ function nextDpi(current, delta, presets) {
   return list[idx]
 }
 
-function isValidDpi(value, min, max, step) {
-  var win = dpiWindow(min, max, step)
+function isValidDpi(value, min, max, step, values) {
   var n = parseDpi(value)
-  if (n < 0 || n < win.min || n > win.max) return false
+  if (n < 0) return false
+  if (values && values.length) return values.indexOf(n) >= 0
+  var win = dpiWindow(min, max, step)
+  if (n < win.min || n > win.max) return false
   return (n - win.min) % win.step === 0
 }
 
-function snapDpi(value, min, max, step) {
-  var win = dpiWindow(min, max, step)
+function snapDpi(value, min, max, step, values) {
   var n = parseDpi(value)
   if (n < 0) return n
+  if (values && values.length) return nearestDpi(n, values)
+  var win = dpiWindow(min, max, step)
   var snapped = win.min + Math.round((n - win.min) / win.step) * win.step
   if (snapped > win.max) snapped = win.max - ((win.max - win.min) % win.step)
   return Math.max(win.min, Math.min(win.max, snapped))
@@ -250,6 +306,9 @@ if (typeof module !== "undefined") {
     parseDpi: parseDpi,
     formatDpi: formatDpi,
     dpiWindow: dpiWindow,
+    nearestDpi: nearestDpi,
+    dpiIndex: dpiIndex,
+    parseNumberList: parseNumberList,
     dpiPresets: dpiPresets,
     dpiMin: dpiMin,
     dpiMax: dpiMax,

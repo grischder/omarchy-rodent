@@ -32,8 +32,15 @@ BarWidget {
   readonly property int dpiMin: Model.dpiMin(status.dpiMin)
   readonly property int dpiMax: Model.dpiMax(status.dpiMax)
   readonly property int dpiStep: Model.dpiStep(status.dpiStep)
-  readonly property bool dpiSupported: Model.parseDpi(status.dpiMax) > 0 || dpi > 0
-  readonly property var dpiPresets: Model.dpiPresets(dpiMin, dpiMax, dpiStep)
+  // A sparse sensor list beats the window: the mouse accepts these and only
+  // these, so the slider walks them by index instead of inventing steps.
+  readonly property var dpiValues: status.dpiValues || []
+  readonly property bool dpiIndexed: dpiValues.length > 1
+  readonly property bool dpiSupported: dpiIndexed || Model.parseDpi(status.dpiMax) > 0 || dpi > 0
+  readonly property var dpiPresets: Model.dpiPresets(dpiMin, dpiMax, dpiStep, dpiValues)
+  readonly property int rate: Model.parseDpi(status.rate)
+  readonly property var rates: status.rates || []
+  readonly property bool rateSupported: rates.length > 0
   readonly property string connection: Model.clampText(status.connection, 24)
   readonly property color batteryColor: {
     var band = Model.batteryBand(batteryPercent)
@@ -151,7 +158,7 @@ BarWidget {
 
   function setDpi(value) {
     var next = Model.parseDpi(value)
-    if (!Model.isValidDpi(next, root.dpiMin, root.dpiMax, root.dpiStep)) return
+    if (!Model.isValidDpi(next, root.dpiMin, root.dpiMax, root.dpiStep, root.dpiValues)) return
     if (dpiSetProc.running) return
     var merged = {}
     for (var key in status) merged[key] = status[key]
@@ -164,6 +171,19 @@ BarWidget {
 
   function nudgeDpi(delta) {
     root.setDpi(Model.nextDpi(root.dpi, delta, root.dpiPresets))
+  }
+
+  function setRate(hz) {
+    var next = Model.parseDpi(hz)
+    if (next < 0 || root.rates.indexOf(next) < 0) return
+    if (dpiSetProc.running) return
+    var merged = {}
+    for (var key in status) merged[key] = status[key]
+    merged.rate = next
+    status = merged
+    dpiBusy = true
+    dpiSetProc.command = root.helperCommand(["--set-rate", String(next)])
+    dpiSetProc.running = true
   }
 
   function checkLowBattery() {

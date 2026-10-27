@@ -1,6 +1,6 @@
 # Rodent
 
-A bar widget for wireless mice on a Logitech receiver (LIGHTSPEED, Unifying, or Bolt). The mouse on the bar turns **green, yellow, or red** with the charge. Click it for percent, charging state, connection, and DPI presets.
+A bar widget for wireless mice on a Logitech receiver (LIGHTSPEED, Unifying, or Bolt). The mouse on the bar turns **green, yellow, or red** with the charge. Click it for percent, charging state, connection, DPI, and polling rate.
 
 Rodent is a fork of [Quarezz/omarchy-g502x](https://github.com/Quarezz/omarchy-g502x), widened from one mouse family to any wireless mouse behind a receiver. Upstream PR [#1](https://github.com/Quarezz/omarchy-g502x/pull/1) is where the G502 X PLUS support and the sensitivity slider came from.
 
@@ -19,7 +19,8 @@ This started as someone else's plugin and still stands on other people's work:
 
 - **Bar** — mouse glyph only, colored by charge: green at 50%+, yellow under 50%, red under 25%. Hover for the model, charge, state and DPI
 - **Panel** — percent, charging or discharging, connection type, current DPI
-- **Sensitivity** — a slider over the range the mouse reports (its own minimum, maximum and step) plus a preset row, same control style as power profiles
+- **Sensitivity** — a slider over the range the mouse reports, plus a preset row, same control style as power profiles. A mouse whose sensor reports a sparse list of values (the PRO X Superlight reports 89) gets a slider that walks exactly those, so it never offers a DPI the mouse would refuse
+- **Polling rate** — one button per rate the mouse reports, from 125 Hz up. Hidden entirely on mice that do not expose it
 - **Low battery** — one critical notification when discharging hits the threshold (default 15%)
 
 ## Supported mice
@@ -88,7 +89,9 @@ Nothing else is written. Removing the plugin does not change onboard mouse profi
 
 - The helper opens receivers through Solaar, keeps the first device whose kind is `mouse`, and reads battery and DPI from it.
 - Charge and state come from Solaar's battery report, which covers the battery features mice actually ship with. Sysfs (`/sys/class/power_supply/hidpp_battery_*`) is a fallback, so charge alone keeps working without Solaar.
-- DPI range and step come from the mouse's own sensor list. Presets outside that range are dropped rather than written and silently clamped.
+- DPI range, step, or the full list of allowed values come from the mouse's own sensor list. Presets outside it are dropped rather than written and silently clamped.
+- Polling rate comes from the HID++ report-rate features (`0x8060`, or the extended `0x8061`), the same ones Solaar's Report Rate setting uses. It only appears when the mouse reports options.
+- Writes to DPI or polling rate can be ignored while the mouse runs onboard profiles; Solaar documents the same caveat for its settings.
 - When two mice share a receiver, the first one Solaar lists is shown.
 
 ## Development
