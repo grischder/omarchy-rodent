@@ -61,7 +61,7 @@ BarWidget {
     if (dpi > 0) bits.push(Model.formatDpi(dpi))
     return bits.join(" · ")
   }
-  readonly property int jobDeadlineMs: 2500
+  readonly property int jobDeadlineMs: 3500
   readonly property int killEscalateMs: 400
   readonly property int maxStatusChars: Model.maxStatusChars()
 
@@ -109,7 +109,7 @@ BarWidget {
     if (!next || typeof next !== "object") return
     var keys = Object.keys(next)
     if (keys.length === 0) return
-    status = next
+    status = Model.mergeStatus(status, next)
   }
 
   function parsePid(value) {

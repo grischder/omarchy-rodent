@@ -113,6 +113,31 @@ function parseStatus(raw) {
   }
 }
 
+// A poll can arrive with charge but without the HID++ half: the helper's child
+// has a hard deadline, and a slow read loses DPI and rate while sysfs still
+// answers. Dropping the controls for one poll makes the panel blink, so the
+// last known capability is carried forward while the same mouse is present.
+function mergeStatus(previous, next) {
+  if (!previous || !next) return next
+  if (!isOn(next.present) || !isOn(previous.present)) return next
+  if (clampText(next.model) !== clampText(previous.model)) return next
+  var hasWindow = next.dpiMax > 0 || (next.dpiValues && next.dpiValues.length > 0)
+  var hadWindow = previous.dpiMax > 0 || (previous.dpiValues && previous.dpiValues.length > 0)
+  if (!hasWindow && hadWindow) {
+    next.dpiMin = previous.dpiMin
+    next.dpiMax = previous.dpiMax
+    next.dpiStep = previous.dpiStep
+    next.dpiValues = previous.dpiValues || []
+  }
+  if (next.dpi === null && previous.dpi > 0) next.dpi = previous.dpi
+  if ((!next.rates || next.rates.length === 0) && previous.rates && previous.rates.length > 0) {
+    next.rates = previous.rates
+    if (next.rate < 0) next.rate = previous.rate
+    next.onboard = previous.onboard
+  }
+  return next
+}
+
 // -1 means "no reading" and every caller checks for it, so the helper's own
 // -1 (and any negative value) must not come back as a healthy-looking 0%.
 function parsePercent(value) {
@@ -336,6 +361,7 @@ if (typeof module !== "undefined") {
     mouseIcon: mouseIcon,
     allowStatus: allowStatus,
     parseStatus: parseStatus,
+    mergeStatus: mergeStatus,
     parsePercent: parsePercent,
     parseDpi: parseDpi,
     formatDpi: formatDpi,

@@ -93,6 +93,36 @@ test("parseStatus carries a sparse sensor list and the polling rates", function 
   assert.deepEqual(status.rates, [125, 250, 500, 1000])
 })
 
+test("a poll without the HID half keeps the last capability", function () {
+  var full = Model.parseStatus(
+    '{"present":true,"model":"G502 X","percent":100,"dpi":1150,' +
+    '"dpi_min":100,"dpi_max":25600,"dpi_step":50,' +
+    '"rate_hz":1000,"rates_hz":[125,250,500,1000],"onboard":true}'
+  )
+  var partial = Model.parseStatus(
+    '{"present":true,"model":"G502 X","percent":99,"dpi":null,' +
+    '"dpi_min":null,"dpi_max":null,"dpi_step":null,"rate_hz":null,"rates_hz":[],"onboard":null}'
+  )
+  var merged = Model.mergeStatus(full, partial)
+  assert.equal(merged.percent, 99) // the new reading still wins
+  assert.equal(merged.dpi, 1150)
+  assert.equal(merged.dpiMin, 100)
+  assert.equal(merged.dpiMax, 25600)
+  assert.equal(merged.dpiStep, 50)
+  assert.deepEqual(merged.rates, [125, 250, 500, 1000])
+  assert.equal(merged.rate, 1000)
+  assert.equal(merged.onboard, true)
+})
+
+test("a different mouse, or a missing one, inherits nothing", function () {
+  var full = Model.parseStatus('{"present":true,"model":"G502 X","dpi":1150,"dpi_max":25600,"rates_hz":[125,1000]}')
+  var other = Model.parseStatus('{"present":true,"model":"MX Master","dpi":null,"dpi_max":null,"rates_hz":[]}')
+  assert.equal(Model.mergeStatus(full, other).dpiMax, -1)
+  var gone = Model.parseStatus('{"present":false,"model":"G502 X","dpi":null,"dpi_max":null,"rates_hz":[]}')
+  assert.equal(Model.mergeStatus(full, gone).dpiMax, -1)
+  assert.equal(Model.mergeStatus({}, other).dpiMax, -1)
+})
+
 test("parseNumberList refuses junk and bounds what it accepts", function () {
   assert.deepEqual(Model.parseNumberList(null), [])
   assert.deepEqual(Model.parseNumberList("800"), [])
