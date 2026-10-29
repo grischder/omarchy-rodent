@@ -37,6 +37,7 @@ Panel {
   readonly property int rate: (hostWidget && hostWidget.rate > 0) ? hostWidget.rate : -1
   readonly property var rates: (hostWidget && hostWidget.rates) ? hostWidget.rates : []
   readonly property bool rateSupported: !!(hostWidget && hostWidget.rateSupported)
+  readonly property bool onboardProfile: !!(hostWidget && hostWidget.onboardProfile)
   readonly property string connection: (hostWidget && hostWidget.connection) ? hostWidget.connection : ""
   readonly property var dpiPresets: (hostWidget && hostWidget.dpiPresets) ? hostWidget.dpiPresets : Model.dpiPresets()
   readonly property bool dpiBusy: !!(hostWidget && hostWidget.dpiBusy)
@@ -374,7 +375,7 @@ Panel {
                 horizontalPadding: Style.spacing.controlPaddingX
                 verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
                 bordered: true
-                enabled: !root.dpiBusy
+                enabled: !root.dpiBusy && !root.onboardProfile
                 active: root.rate === modelData
                 hasCursor: root.rateCursor === index
                 onClicked: root.setRate(modelData)
@@ -384,6 +385,11 @@ Panel {
                 }
               }
             }
+          }
+
+          InfoLabel {
+            visible: root.onboardProfile
+            text: "Controlled by an onboard profile"
           }
         }
       }

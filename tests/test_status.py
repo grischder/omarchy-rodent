@@ -145,6 +145,14 @@ class RateTest(unittest.TestCase):
         self.assertIsNone(status._extended_rate_slot(300))
 
 
+class OnboardTest(unittest.TestCase):
+    def test_mode_byte_says_who_controls_the_mouse(self):
+        self.assertTrue(status._onboard_active(b"\x01"))
+        self.assertFalse(status._onboard_active(b"\x02"))
+        self.assertIsNone(status._onboard_active(None))
+        self.assertIsNone(status._onboard_active(b""))
+
+
 class SetDpiArgumentTest(unittest.TestCase):
     def test_accepts_a_command_and_a_sane_value(self):
         self.assertEqual(status._parse_set_dpi(["status.py", "--set-dpi", "1600"]), 1600)

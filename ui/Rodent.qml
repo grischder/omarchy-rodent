@@ -43,6 +43,7 @@ BarWidget {
   readonly property int rate: Model.parseDpi(status.rate)
   readonly property var rates: status.rates || []
   readonly property bool rateSupported: rates.length > 0
+  readonly property bool onboardProfile: Model.isOn(status.onboard)
   readonly property string connection: Model.clampText(status.connection, 24)
   readonly property color batteryColor: {
     var band = Model.batteryBand(batteryPercent)
@@ -179,6 +180,7 @@ BarWidget {
   function setRate(hz) {
     var next = Model.parseDpi(hz)
     if (next < 0 || root.rates.indexOf(next) < 0) return
+    if (root.onboardProfile) return
     if (dpiSetProc.running) return
     var merged = {}
     for (var key in status) merged[key] = status[key]

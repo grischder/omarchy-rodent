@@ -168,6 +168,7 @@ def _empty_battery() -> dict:
         "dpi_values": None,
         "rate_hz": None,
         "rates_hz": None,
+        "onboard": None,
     }
 
 
@@ -404,6 +405,29 @@ def _extended_rate_slot(hz: int) -> int | None:
         return None
 
 
+def _onboard_active(mode: bytes | None) -> bool | None:
+    """True when an onboard profile controls the mouse, False in host mode.
+
+    Mode 0x01 means the mouse runs the profile stored in its own memory; 0x02
+    means the host (software) is in control. Report rate is held by the profile
+    in the first case, so writes are refused - the same caveat Solaar prints on
+    its Report Rate setting.
+    """
+    if not mode:
+        return None
+    return (int(mode[0]) & 0xFF) == 1
+
+
+def _read_onboard(dev) -> bool | None:
+    from logitech_receiver.hidpp20_constants import SupportedFeature
+
+    try:
+        mode = dev.feature_request(SupportedFeature.ONBOARD_PROFILES, 0x20)
+    except Exception:
+        return None
+    return _onboard_active(mode)
+
+
 def _read_rate(dev) -> tuple[int | None, list[int]]:
     """Current polling rate and the ones the mouse accepts, in Hz."""
     from logitech_receiver.hidpp20_constants import SupportedFeature
@@ -500,6 +524,7 @@ def _hid_work(set_to: int | None, set_rate_to: int | None) -> dict:
                 out["dpi"] = _set_dpi(dev, _snap_dpi(set_to, low, high, step, allowed))
             else:
                 out["dpi"] = _read_dpi(dev)
+            out["onboard"] = _read_onboard(dev)
             if set_rate_to is not None:
                 out["rate_hz"], out["rates_hz"] = _set_rate(dev, set_rate_to)
             else:
@@ -778,7 +803,7 @@ def _merge(payload: dict, hid: dict) -> dict:
         value = hid.get(key)
         if value is not None and value != "":
             payload[key] = value
-    for key in ("dpi", "dpi_min", "dpi_max", "dpi_step", "dpi_values", "rate_hz", "rates_hz"):
+    for key in ("dpi", "dpi_min", "dpi_max", "dpi_step", "dpi_values", "rate_hz", "rates_hz", "onboard"):
         payload[key] = hid.get(key)
     return payload
 

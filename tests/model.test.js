@@ -78,7 +78,8 @@ test("parseStatus reads a full payload", function () {
     dpiStep: 50,
     dpiValues: [],
     rate: -1,
-    rates: []
+    rates: [],
+    onboard: false
   })
 })
 
@@ -97,6 +98,13 @@ test("parseNumberList refuses junk and bounds what it accepts", function () {
   assert.deepEqual(Model.parseNumberList("800"), [])
   assert.deepEqual(Model.parseNumberList([800, "400", -1, 0, 800, 2.6]), [3, 400, 800])
   assert.deepEqual(Model.parseNumberList(["lots", null, {}]), [])
+})
+
+test("parseStatus carries the onboard-profile flag", function () {
+  assert.equal(Model.parseStatus('{"onboard":true}').onboard, true)
+  assert.equal(Model.parseStatus('{"onboard":false}').onboard, false)
+  assert.equal(Model.parseStatus('{"onboard":null}').onboard, false)
+  assert.equal(Model.parseStatus("{}").onboard, false)
 })
 
 test("parseStatus marks an unreported DPI window instead of inventing one", function () {

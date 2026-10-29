@@ -103,7 +103,10 @@ function parseStatus(raw) {
       // Non-empty only when the mixer is not uniform; it then beats the window.
       dpiValues: parseNumberList(next.dpi_values),
       rate: parseDpi(next.rate_hz),
-      rates: parseNumberList(next.rates_hz)
+      rates: parseNumberList(next.rates_hz),
+      // True when an onboard profile refuses rate writes; null/false both
+      // mean the host is free to write.
+      onboard: isOn(next.onboard)
     }
   } catch (e) {
     return {}
