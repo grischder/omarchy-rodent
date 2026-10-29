@@ -90,6 +90,7 @@ Nothing else is written. Removing the plugin does not change onboard mouse profi
 - The helper opens receivers through Solaar, keeps the first device whose kind is `mouse`, and reads battery and DPI from it.
 - Charge and state come from Solaar's battery report, which covers the battery features mice actually ship with. Sysfs (`/sys/class/power_supply/hidpp_battery_*`) is a fallback, so charge alone keeps working without Solaar.
 - DPI range, step, or the full list of allowed values come from the mouse's own sensor list. Presets outside it are dropped rather than written and silently clamped.
+- While the mouse sleeps its HID++ reads fail, but the receiver still lists it. The last reading stays on the bar and in the panel until the mouse answers again, rather than going blank on every idle.
 - Polling rate comes from the HID++ report-rate features (`0x8060`, or the extended `0x8061`), the same ones Solaar's Report Rate setting uses. It only appears when the mouse reports options.
 - The onboard-profile mode is read from `0x8100` (`0x20`). When an onboard profile is active, the mouse keeps the report rate in its own memory and refuses writes to it, so the rate buttons are disabled and the panel says why. Set **Onboard Profiles → Disabled** in Solaar, or switch profile from the mouse, to take control back; DPI keeps working either way.
 - When two mice share a receiver, the first one Solaar lists is shown.

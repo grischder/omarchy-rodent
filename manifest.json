@@ -2,11 +2,13 @@
   "schemaVersion": 1,
   "id": "grischder.rodent",
   "name": "Rodent",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "author": "grischder",
   "license": "MIT",
   "description": "Charge, DPI and polling rate for wireless mice in the Omarchy bar. Credits: Omarchy power panel, Solaar, AirPods for Omarchy",
-  "kinds": ["bar-widget"],
+  "kinds": [
+    "bar-widget"
+  ],
   "entryPoints": {
     "barWidget": "ui/Rodent.qml"
   },

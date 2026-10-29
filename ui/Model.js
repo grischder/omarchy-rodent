@@ -130,6 +130,17 @@ function mergeStatus(previous, next) {
     next.dpiValues = previous.dpiValues || []
   }
   if (next.dpi === null && previous.dpi > 0) next.dpi = previous.dpi
+  // A sleeping mouse keeps its pairing entry, so the helper can still say
+  // "present" while every HID++ read fails. Blanking the charge would turn
+  // the bar icon grey and the panel into "Standing by -" every time the
+  // mouse idles; the last reading stays until the mouse answers again.
+  if (next.percent === null && next.status === "" && previous.percent !== null && previous.percent >= 0) {
+    next.percent = previous.percent
+    next.status = previous.status
+    next.charging = previous.charging
+    next.full = previous.full
+    next.discharging = previous.discharging
+  }
   if ((!next.rates || next.rates.length === 0) && previous.rates && previous.rates.length > 0) {
     next.rates = previous.rates
     if (next.rate < 0) next.rate = previous.rate

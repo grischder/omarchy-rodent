@@ -114,6 +114,19 @@ test("a poll without the HID half keeps the last capability", function () {
   assert.equal(merged.onboard, true)
 })
 
+test("a sleeping mouse keeps its last reading instead of blanking", function () {
+  var awake = Model.parseStatus('{"present":true,"model":"G502 X","percent":37,"status":"Discharging","discharging":true,"dpi":1150,"dpi_max":25600}')
+  var asleep = Model.parseStatus('{"present":true,"model":"G502 X","percent":null,"status":"","discharging":false,"dpi":null,"dpi_max":null}')
+  var held = Model.mergeStatus(awake, asleep)
+  assert.equal(held.percent, 37)
+  assert.equal(held.status, "Discharging")
+  assert.equal(held.discharging, true)
+  // A real reading always wins over the held one.
+  var wakes = Model.parseStatus('{"present":true,"model":"G502 X","percent":52,"status":"Charging","charging":true,"dpi":1150,"dpi_max":25600}')
+  assert.equal(Model.mergeStatus(awake, wakes).percent, 52)
+  assert.equal(Model.mergeStatus(awake, wakes).status, "Charging")
+})
+
 test("a different mouse, or a missing one, inherits nothing", function () {
   var full = Model.parseStatus('{"present":true,"model":"G502 X","dpi":1150,"dpi_max":25600,"rates_hz":[125,1000]}')
   var other = Model.parseStatus('{"present":true,"model":"MX Master","dpi":null,"dpi_max":null,"rates_hz":[]}')
