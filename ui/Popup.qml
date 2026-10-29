@@ -357,6 +357,9 @@ Panel {
             id: rateRow
             width: parent.width
             spacing: Style.space(6)
+            // The buttons stay visible so the current rate is still readable,
+            // but they read as unavailable while a profile owns the setting.
+            opacity: root.onboardProfile ? 0.55 : 1.0
 
             readonly property real cellWidth: root.rates.length > 0
               ? (width - spacing * (root.rates.length - 1)) / root.rates.length
