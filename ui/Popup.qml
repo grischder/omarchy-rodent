@@ -42,6 +42,7 @@ Panel {
   readonly property bool dpiBusy: !!(hostWidget && hostWidget.dpiBusy)
   readonly property color fillColor: (hostWidget && hostWidget.batteryColor) ? hostWidget.batteryColor : (lowBattery ? urgent : foreground)
   property int dpiCursor: -1
+  property int rateCursor: -1
   property int dpiPreview: -1
 
   // While dragging, the label and the settle-back position come from the
@@ -54,12 +55,21 @@ Panel {
   // A sparse sensor list is walked by index, so the values people actually use
   // get proportionate travel on the track instead of the first few percent of
   // a DPI-sized range.
+  // In list mode the track walks the mouse's own values, capped like the
+  // window below. A reading above the cap still gets a position, so the knob
+  // does not lie about where the mouse is.
+  readonly property var sliderValues: {
+    var list = Model.sliderValues(root.dpiValues, root.dpi, Model.dpiSliderMax())
+    return list.length > 1 ? list : root.dpiValues
+  }
   readonly property int sliderMin: root.dpiIndexed ? 0 : Math.min(root.dpiMin, root.dpi > 0 ? root.dpi : root.dpiMin)
-  readonly property int sliderMax: root.dpiIndexed ? root.dpiValues.length - 1 : Math.max(root.dpiMax, root.dpi > 0 ? root.dpi : root.dpiMax)
+  readonly property int sliderMax: root.dpiIndexed
+    ? sliderValues.length - 1
+    : Math.max(Math.min(root.dpiMax, Model.dpiSliderMax()), root.dpi > 0 ? root.dpi : 0)
   readonly property int sliderStep: root.dpiIndexed ? 1 : root.dpiStep
   readonly property int sliderValue: {
     if (root.dpiIndexed) {
-      var idx = Model.dpiIndex(root.dpiPreview > 0 ? root.dpiPreview : root.dpi, root.dpiValues)
+      var idx = Model.dpiIndex(root.dpiPreview > 0 ? root.dpiPreview : root.dpi, root.sliderValues)
       return idx < 0 ? 0 : idx
     }
     return dpiPreview > 0
@@ -71,8 +81,8 @@ Panel {
   // snapped DPI otherwise.
   function previewFor(position) {
     if (root.dpiIndexed) {
-      var idx = Math.max(0, Math.min(root.dpiValues.length - 1, Math.round(position)))
-      return root.dpiValues[idx]
+      var idx = Math.max(0, Math.min(root.sliderValues.length - 1, Math.round(position)))
+      return root.sliderValues[idx]
     }
     return Model.snapDpi(position, root.dpiMin, root.dpiMax, root.dpiStep, root.dpiValues)
   }
@@ -93,9 +103,13 @@ Panel {
     return false
   }
 
-  onOpenedChanged: if (opened) {
+  // A hover cursor is a keyboard artefact; the mouse showing it is only useful
+  // while the pointer is actually there. It is cleared on leave and whenever
+  // the panel opens or closes, so a green highlight always means "selected".
+  onOpenedChanged: {
     dpiCursor = -1
-    if (hostWidget && typeof hostWidget.refresh === "function") hostWidget.refresh()
+    rateCursor = -1
+    if (opened && hostWidget && typeof hostWidget.refresh === "function") hostWidget.refresh()
   }
 
   KeyboardPanel {
@@ -315,6 +329,7 @@ Panel {
                 onClicked: root.setDpi(modelData)
                 onHovered: function(h) {
                   if (h) root.dpiCursor = index
+                  else if (root.dpiCursor === index) root.dpiCursor = -1
                 }
               }
             }
@@ -350,6 +365,7 @@ Panel {
               model: root.rates
               Button {
                 required property var modelData
+                required property int index
                 width: rateRow.cellWidth
                 text: String(modelData) + " Hz"
                 fontSize: Style.font.bodySmall
@@ -360,7 +376,12 @@ Panel {
                 bordered: true
                 enabled: !root.dpiBusy
                 active: root.rate === modelData
+                hasCursor: root.rateCursor === index
                 onClicked: root.setRate(modelData)
+                onHovered: function(h) {
+                  if (h) root.rateCursor = index
+                  else if (root.rateCursor === index) root.rateCursor = -1
+                }
               }
             }
           }

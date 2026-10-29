@@ -11,6 +11,12 @@ var DPI_STEP = 50
 // the mouse can actually be set to it.
 var DPI_PRESETS = [400, 800, 1600, 3200, 6400]
 
+// The slider stops here even when the sensor goes further. A G502 X reports
+// 100..25600, but 25k DPI is unusable and it flattened the useful part of the
+// track into the first few percent. The helper still accepts the full range
+// from the command line.
+var DPI_SLIDER_MAX = 6400
+
 function maxStatusChars() {
   return MAX_STATUS_CHARS
 }
@@ -158,6 +164,26 @@ function dpiMax(max) {
 function dpiStep(step) {
   var st = parseDpi(step)
   return st > 0 ? st : DPI_STEP
+}
+
+function dpiSliderMax() {
+  return DPI_SLIDER_MAX
+}
+
+// The list a list-driven slider walks: the mouse's own values up to the cap,
+// widened just enough to keep a reading above the cap reachable.
+function sliderValues(values, current, cap) {
+  if (!values || !values.length) return []
+  var limit = parseDpi(cap)
+  if (limit < 0) limit = DPI_SLIDER_MAX
+  var now = parseDpi(current)
+  if (now > limit) limit = now
+  var out = []
+  for (var i = 0; i < values.length; i++) {
+    if (values[i] <= limit) out.push(values[i])
+  }
+  if (!out.length) out.push(values[0])
+  return out
 }
 
 // The closest value the mouse actually accepts, or -1 for an empty list.
@@ -318,6 +344,8 @@ if (typeof module !== "undefined") {
     dpiMin: dpiMin,
     dpiMax: dpiMax,
     dpiStep: dpiStep,
+    dpiSliderMax: dpiSliderMax,
+    sliderValues: sliderValues,
     isValidDpi: isValidDpi,
     snapDpi: snapDpi,
     nextDpi: nextDpi,

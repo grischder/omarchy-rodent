@@ -224,6 +224,15 @@ test("a sparse list decides what is valid and what a write snaps to", function (
   assert.equal(Model.snapDpi(500, -1, -1, -1, values), 400)
 })
 
+test("the slider stops at 6400 even when the sensor goes further", function () {
+  assert.equal(Model.dpiSliderMax(), 6400)
+  var list = [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600]
+  assert.deepEqual(Model.sliderValues(list, 3200, Model.dpiSliderMax()), [100, 200, 400, 800, 1600, 3200, 6400])
+  // A reading above the cap stays reachable rather than pulling the knob to an end.
+  assert.deepEqual(Model.sliderValues(list, 12800, Model.dpiSliderMax()).slice(-2), [6400, 12800])
+  assert.deepEqual(Model.sliderValues([], 800, 6400), [])
+})
+
 test("presets come from the list when the mouse sent one", function () {
   var values = [100, 200, 300, 400, 500, 800, 1200, 1600, 3200, 6400, 12000, 25500]
   assert.deepEqual(Model.dpiPresets(-1, -1, -1, values), [400, 800, 1600, 3200, 6400])
